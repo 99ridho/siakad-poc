@@ -760,49 +760,49 @@ go mod verify
 ### Directory Structure
 ```
 siakad-poc/
-├── cmd/                  # Application entry point
+├── cmd/                     # Application entry point
 │   └── main.go
-├── config/               # Configuration management
+├── config/                  # Configuration management
 │   └── config.go
-├── common/               # Shared utilities
-│   ├── base_response.go  # Standardized responses
-│   └── validator.go      # Request validation
-├── constants/            # System constants
-│   └── constant.go       # Role definitions
-├── middlewares/          # HTTP middleware
-│   ├── jwt.go           # JWT authentication
-│   └── access_control.go # Role-based access control
-├── db/                   # Database layer
-│   ├── generated/        # SQLC generated code
+├── common/                  # Shared utilities
+│   ├── base_response.go     # Standardized responses
+│   └── validator.go         # Request validation
+├── constants/               # System constants
+│   └── constant.go          # Role definitions
+├── middlewares/             # HTTP middleware
+│   ├── jwt.go               # JWT authentication
+│   └── access_control.go    # Role-based access control
+├── db/                      # Database layer
+│   ├── generated/           # SQLC generated code
 │   │   ├── models.go
 │   │   ├── db.go
 │   │   ├── users.sql.go
 │   │   └── academic.sql.go
-│   ├── migrations/       # Goose migration files
-│   ├── repositories/     # Repository implementations
+│   ├── migrations/          # Goose migration files
+│   ├── repositories/        # Repository implementations
 │   │   ├── users.go
 │   │   └── academic.go
-│   └── sql/              # SQL query definitions
+│   └── sql/                 # SQL query definitions
 │       ├── users.sql
 │       └── academic.sql
-├── modules/              # Feature modules
-│   ├── auth/             # Authentication module
+├── modules/                 # Feature modules
+│   ├── auth/                # Authentication module
 │   │   ├── handlers/
 │   │   └── usecases/
-│   └── academic/         # Academic management module
+│   └── academic/            # Academic management module
 │       ├── handlers/
 │       │   └── course_enrollment.go
 │       └── usecases/
 │           ├── course_enrollment.go
 │           └── course_enrollment_test.go
-├── docs/                 # Documentation
+├── docs/                    # Documentation
 │   └── academic/
 │       └── course-enrollment.md
-├── config.json.example   # Configuration template
-├── sqlc.yml             # SQLC configuration
-├── go.mod               # Go module definition
-├── ARCHITECTURE.md      # System architecture documentation
-└── CLAUDE.md            # Development guidance
+├── config.json.example      # Configuration template
+├── sqlc.yml                 # SQLC configuration
+├── go.mod                   # Go module definition
+├── ARCHITECTURE.md          # System architecture documentation
+└── CLAUDE.md                # Development guidance
 ```
 
 ---
@@ -818,7 +818,7 @@ siakad-poc/
 - **Grade Management**: Academic performance tracking
 
 #### System Enhancements
-- **Middleware**: Authentication, CORS, rate limiting
+- **Middleware**: CORS, rate limiting
 - **Testing**: Comprehensive test suite
 - **API Documentation**: OpenAPI/Swagger integration
 - **Monitoring**: Health checks and metrics
@@ -848,18 +848,15 @@ siakad-poc/
 ### Technical Debt
 
 #### Current Limitations
-1. ✅ ~~**No Authentication Middleware**: JWT validation per endpoint~~ → **RESOLVED**: Centralized JWT middleware implemented
-2. **Limited Error Types**: Generic error responses
-3. **No API Versioning**: Single version assumption
-4. **No Request Logging**: Limited observability
-5. **No Health Checks**: Service monitoring gaps
+1. **Limited Error Types**: Generic error responses
+2. **No API Versioning**: Single version assumption
+3. **No Request Logging**: Limited observability
+4. **No Health Checks**: Service monitoring gaps
 
 #### Recommended Improvements
-1. ✅ ~~**Add Middleware Layer**: Centralized cross-cutting concerns~~ → **RESOLVED**: JWT middleware implemented
-2. **Enhance Error Handling**: Typed errors with proper HTTP codes  
-3. **Add API Versioning**: Future compatibility
-4. **Implement Observability**: Metrics, tracing, and monitoring
-5. ✅ ~~**Add Testing Framework**: Comprehensive test coverage~~ → **RESOLVED**: Testify framework with comprehensive tests
+1. **Enhance Error Handling**: Typed errors with proper HTTP codes  
+2. **Add API Versioning**: Future compatibility
+3. **Implement Observability**: Metrics, tracing, and monitoring
 
 ---
 
