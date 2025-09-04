@@ -231,7 +231,7 @@ sql:
     gen:
       go:
         package: "generated"
-        out: "/db/generated"
+        out: "./db/generated"
         sql_package: "pgx/v5"
 ```
 
