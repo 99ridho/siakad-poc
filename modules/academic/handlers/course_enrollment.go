@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 )
 
 type CourseEnrollmentHandler struct {
@@ -24,9 +25,22 @@ func NewEnrollmentHandler(enrollmentUseCase *usecases.CourseEnrollmentUseCase) *
 }
 
 func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c echo.Context) error {
+	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
+	if requestID == "" {
+		requestID = c.Request().Header.Get("X-Request-ID")
+	}
+	clientIP := c.RealIP()
+
 	// Extract course offering ID from URL parameter
 	courseOfferingID := c.Param("id")
 	if courseOfferingID == "" {
+		log.Warn().
+			Str("request_id", requestID).
+			Str("client_ip", clientIP).
+			Str("path", c.Request().RequestURI).
+			Str("method", c.Request().Method).
+			Msg("Course offering ID missing from URL parameter")
+
 		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
@@ -41,6 +55,13 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c echo.Context) error {
 	// Extract student ID from JWT context (set by middleware)
 	studentIDInterface := c.Get(common.StudentIDKey)
 	if studentIDInterface == nil {
+		log.Error().
+			Str("request_id", requestID).
+			Str("client_ip", clientIP).
+			Str("course_offering_id", courseOfferingID).
+			Str("path", c.Request().RequestURI).
+			Msg("Student ID not found in JWT token context")
+
 		return c.JSON(http.StatusUnauthorized, common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
@@ -54,6 +75,14 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c echo.Context) error {
 
 	studentID, ok := studentIDInterface.(string)
 	if !ok {
+		log.Error().
+			Str("request_id", requestID).
+			Str("client_ip", clientIP).
+			Str("course_offering_id", courseOfferingID).
+			Interface("student_id_raw", studentIDInterface).
+			Str("path", c.Request().RequestURI).
+			Msg("Student ID from JWT token is not in valid string format")
+
 		return c.JSON(http.StatusInternalServerError, common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
@@ -70,6 +99,17 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c echo.Context) error {
 	if err != nil {
 		// Determine appropriate HTTP status code based on error type
 		statusCode := http.StatusBadRequest
+
+		// Log the enrollment failure with context
+		log.Error().
+			Err(err).
+			Stack().
+			Str("request_id", requestID).
+			Str("client_ip", clientIP).
+			Str("student_id", studentID).
+			Str("course_offering_id", courseOfferingID).
+			Str("path", c.Request().RequestURI).
+			Msg("Course enrollment failed")
 
 		// You could implement more sophisticated error type checking here
 		// For now, treating all business logic errors as bad request
