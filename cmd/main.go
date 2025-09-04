@@ -33,8 +33,12 @@ func main() {
 	loginUseCase := usecases.NewLoginUseCase(usersRepository)
 	loginHandler := handlers.NewLoginHandler(loginUseCase)
 
+	registerUseCase := usecases.NewRegisterUseCase(usersRepository)
+	registerHandler := handlers.NewRegisterHandler(registerUseCase)
+
 	e := echo.New()
 	e.POST("/login", loginHandler.HandleLogin)
+	e.POST("/register", registerHandler.HandleRegister)
 
 	e.Logger.Fatal(e.Start(":8880"))
 }

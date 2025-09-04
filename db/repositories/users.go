@@ -12,6 +12,7 @@ import (
 type UserRepository interface {
 	GetUser(ctx context.Context, id string) (generated.User, error)
 	GetUserByEmail(ctx context.Context, email string) (generated.User, error)
+	CreateUser(ctx context.Context, email, password string, role int64) (generated.User, error)
 }
 
 type DefaultUserRepository struct {
@@ -38,4 +39,20 @@ func (r *DefaultUserRepository) GetUser(ctx context.Context, id string) (generat
 
 func (r *DefaultUserRepository) GetUserByEmail(ctx context.Context, email string) (generated.User, error) {
 	return r.query.GetUserByEmail(ctx, email)
+}
+
+func (r *DefaultUserRepository) CreateUser(ctx context.Context, email, password string, role int64) (generated.User, error) {
+	var roleNumeric pgtype.Numeric
+	err := roleNumeric.Scan(role)
+	if err != nil {
+		return generated.User{}, errors.New("can't parse role as numeric")
+	}
+
+	params := generated.CreateUserParams{
+		Email:    email,
+		Password: password,
+		Role:     roleNumeric,
+	}
+
+	return r.query.CreateUser(ctx, params)
 }
