@@ -11,10 +11,10 @@ import (
 )
 
 type CourseOfferingHandler struct {
-	useCase usecases.CourseOfferingUseCase
+	useCase *usecases.CourseOfferingUseCase
 }
 
-func NewCourseOfferingHandler(useCase usecases.CourseOfferingUseCase) *CourseOfferingHandler {
+func NewCourseOfferingHandler(useCase *usecases.CourseOfferingUseCase) *CourseOfferingHandler {
 	return &CourseOfferingHandler{
 		useCase: useCase,
 	}

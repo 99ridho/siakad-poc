@@ -88,13 +88,13 @@ func (m *MockCourseOfferingRepository) GetCourseOfferingByIDWithDetails(ctx cont
 // Test Suite
 type CourseOfferingUseCaseTestSuite struct {
 	suite.Suite
-	useCase     *DefaultCourseOfferingUseCase
-	mockRepo    *MockCourseOfferingRepository
-	ctx         context.Context
-	testTime    time.Time
+	useCase         *CourseOfferingUseCase
+	mockRepo        *MockCourseOfferingRepository
+	ctx             context.Context
+	testTime        time.Time
 	courseOfferUUID pgtype.UUID
-	semesterUUID pgtype.UUID
-	courseUUID pgtype.UUID
+	semesterUUID    pgtype.UUID
+	courseUUID      pgtype.UUID
 }
 
 func (suite *CourseOfferingUseCaseTestSuite) SetupTest() {
@@ -102,7 +102,7 @@ func (suite *CourseOfferingUseCaseTestSuite) SetupTest() {
 	suite.useCase = NewCourseOfferingUseCase(suite.mockRepo)
 	suite.ctx = context.Background()
 	suite.testTime = time.Now()
-	
+
 	// Setup test UUIDs
 	suite.courseOfferUUID = pgtype.UUID{
 		Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -166,7 +166,7 @@ func (suite *CourseOfferingUseCaseTestSuite) TestGetCourseOfferingsWithPaginatio
 
 // Test pagination with default values
 func (suite *CourseOfferingUseCaseTestSuite) TestGetCourseOfferingsWithPagination_DefaultValues() {
-	page := 0 // Invalid, should default to 1
+	page := 0     // Invalid, should default to 1
 	pageSize := 0 // Invalid, should default to 10
 	expectedLimit := 10
 	expectedOffset := 0
@@ -179,7 +179,7 @@ func (suite *CourseOfferingUseCaseTestSuite) TestGetCourseOfferingsWithPaginatio
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), pagination)
-	assert.Equal(suite.T(), 1, pagination.Page) // Should default to 1
+	assert.Equal(suite.T(), 1, pagination.Page)      // Should default to 1
 	assert.Equal(suite.T(), 10, pagination.PageSize) // Should default to 10
 	assert.Empty(suite.T(), results)
 }

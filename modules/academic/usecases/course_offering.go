@@ -14,12 +14,12 @@ import (
 )
 
 type CourseOfferingResponse struct {
-	ID         string    `json:"id"`
-	CourseName string    `json:"course_name"`
-	CourseCode string    `json:"course_code"`
-	SectionCode string   `json:"section_code"`
-	Capacity   int32     `json:"capacity"`
-	StartTime  time.Time `json:"start_time"`
+	ID          string    `json:"id"`
+	CourseName  string    `json:"course_name"`
+	CourseCode  string    `json:"course_code"`
+	SectionCode string    `json:"section_code"`
+	Capacity    int32     `json:"capacity"`
+	StartTime   time.Time `json:"start_time"`
 }
 
 type CreateCourseOfferingRequest struct {
@@ -42,24 +42,17 @@ type CourseOfferingIDResponse struct {
 	ID string `json:"id"`
 }
 
-type CourseOfferingUseCase interface {
-	GetCourseOfferingsWithPagination(ctx context.Context, page, pageSize int) ([]CourseOfferingResponse, *common.PaginationMetadata, error)
-	CreateCourseOffering(ctx context.Context, req CreateCourseOfferingRequest) (CourseOfferingIDResponse, error)
-	UpdateCourseOffering(ctx context.Context, id string, req UpdateCourseOfferingRequest) (CourseOfferingIDResponse, error)
-	DeleteCourseOffering(ctx context.Context, id string) error
-}
-
-type DefaultCourseOfferingUseCase struct {
+type CourseOfferingUseCase struct {
 	repo repositories.AcademicRepository
 }
 
-func NewCourseOfferingUseCase(repo repositories.AcademicRepository) *DefaultCourseOfferingUseCase {
-	return &DefaultCourseOfferingUseCase{
+func NewCourseOfferingUseCase(repo repositories.AcademicRepository) *CourseOfferingUseCase {
+	return &CourseOfferingUseCase{
 		repo: repo,
 	}
 }
 
-func (uc *DefaultCourseOfferingUseCase) GetCourseOfferingsWithPagination(ctx context.Context, page, pageSize int) ([]CourseOfferingResponse, *common.PaginationMetadata, error) {
+func (uc *CourseOfferingUseCase) GetCourseOfferingsWithPagination(ctx context.Context, page, pageSize int) ([]CourseOfferingResponse, *common.PaginationMetadata, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -87,12 +80,12 @@ func (uc *DefaultCourseOfferingUseCase) GetCourseOfferingsWithPagination(ctx con
 		}
 
 		responses = append(responses, CourseOfferingResponse{
-			ID:         uuidToString(co.CourseOfferingID),
-			CourseName: co.CourseName,
-			CourseCode: co.CourseCode,
+			ID:          uuidToString(co.CourseOfferingID),
+			CourseName:  co.CourseName,
+			CourseCode:  co.CourseCode,
 			SectionCode: co.SectionCode,
-			Capacity:   co.Capacity,
-			StartTime:  startTime,
+			Capacity:    co.Capacity,
+			StartTime:   startTime,
 		})
 	}
 
@@ -108,7 +101,7 @@ func (uc *DefaultCourseOfferingUseCase) GetCourseOfferingsWithPagination(ctx con
 	return responses, pagination, nil
 }
 
-func (uc *DefaultCourseOfferingUseCase) CreateCourseOffering(ctx context.Context, req CreateCourseOfferingRequest) (CourseOfferingIDResponse, error) {
+func (uc *CourseOfferingUseCase) CreateCourseOffering(ctx context.Context, req CreateCourseOfferingRequest) (CourseOfferingIDResponse, error) {
 	courseOffering, err := uc.repo.CreateCourseOffering(ctx, req.SemesterID, req.CourseID, req.SectionCode, req.Capacity, req.StartTime)
 	if err != nil {
 		return CourseOfferingIDResponse{}, err
@@ -119,7 +112,7 @@ func (uc *DefaultCourseOfferingUseCase) CreateCourseOffering(ctx context.Context
 	}, nil
 }
 
-func (uc *DefaultCourseOfferingUseCase) UpdateCourseOffering(ctx context.Context, id string, req UpdateCourseOfferingRequest) (CourseOfferingIDResponse, error) {
+func (uc *CourseOfferingUseCase) UpdateCourseOffering(ctx context.Context, id string, req UpdateCourseOfferingRequest) (CourseOfferingIDResponse, error) {
 	courseOffering, err := uc.repo.UpdateCourseOffering(ctx, id, req.SemesterID, req.CourseID, req.SectionCode, req.Capacity, req.StartTime)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -133,7 +126,7 @@ func (uc *DefaultCourseOfferingUseCase) UpdateCourseOffering(ctx context.Context
 	}, nil
 }
 
-func (uc *DefaultCourseOfferingUseCase) DeleteCourseOffering(ctx context.Context, id string) error {
+func (uc *CourseOfferingUseCase) DeleteCourseOffering(ctx context.Context, id string) error {
 	_, err := uc.repo.DeleteCourseOffering(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -148,10 +141,10 @@ func uuidToString(uuid pgtype.UUID) string {
 	if !uuid.Valid {
 		return ""
 	}
-	return fmt.Sprintf("%x-%x-%x-%x-%x", 
-		uuid.Bytes[0:4], 
-		uuid.Bytes[4:6], 
-		uuid.Bytes[6:8], 
-		uuid.Bytes[8:10], 
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		uuid.Bytes[0:4],
+		uuid.Bytes[4:6],
+		uuid.Bytes[6:8],
+		uuid.Bytes[8:10],
 		uuid.Bytes[10:16])
 }

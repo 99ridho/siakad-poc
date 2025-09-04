@@ -3,13 +3,8 @@ package main
 import (
 	"context"
 	"siakad-poc/config"
-	"siakad-poc/constants"
-	"siakad-poc/db/repositories"
-	"siakad-poc/middlewares"
-	academicHandlers "siakad-poc/modules/academic/handlers"
-	academicUsecases "siakad-poc/modules/academic/usecases"
-	authHandlers "siakad-poc/modules/auth/handlers"
-	authUsecases "siakad-poc/modules/auth/usecases"
+	"siakad-poc/modules/academic"
+	"siakad-poc/modules/auth"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -38,24 +33,6 @@ func main() {
 		log.Fatal().Err(err).Msg("cannot create database pool")
 	}
 
-	// Repositories
-	usersRepository := repositories.NewDefaultUserRepository(pool)
-	academicRepository := repositories.NewDefaultAcademicRepository(pool)
-
-	// Auth module
-	loginUseCase := authUsecases.NewLoginUseCase(usersRepository)
-	loginHandler := authHandlers.NewLoginHandler(loginUseCase)
-
-	registerUseCase := authUsecases.NewRegisterUseCase(usersRepository)
-	registerHandler := authHandlers.NewRegisterHandler(registerUseCase)
-
-	// Academic module
-	enrollmentUseCase := academicUsecases.NewCourseEnrollmentUseCase(academicRepository)
-	enrollmentHandler := academicHandlers.NewEnrollmentHandler(enrollmentUseCase)
-
-	courseOfferingUseCase := academicUsecases.NewCourseOfferingUseCase(academicRepository)
-	courseOfferingHandler := academicHandlers.NewCourseOfferingHandler(courseOfferingUseCase)
-
 	app := fiber.New()
 	app.Use(
 		cors.New(),
@@ -68,40 +45,11 @@ func main() {
 		}),
 	)
 
-	// Auth routes (unprotected)
-	app.Post("/login", loginHandler.HandleLogin)
-	app.Post("/register", registerHandler.HandleRegister)
+	authModule := auth.NewModule(pool)
+	academicModule := academic.NewModule(pool)
 
-	// Academic routes (protected with JWT middleware)
-	academicGroup := app.Group("/academic")
-	academicGroup.Use(middlewares.JWT())
-	academicGroup.Post(
-		"/course-offering/:id/enroll",
-		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
-		enrollmentHandler.HandleCourseEnrollment,
-	)
-
-	// Course offering CRUD routes (Admin and Koorprodi only)
-	academicGroup.Get(
-		"/course-offering",
-		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
-		courseOfferingHandler.HandleListCourseOfferings,
-	)
-	academicGroup.Post(
-		"/course-offering",
-		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
-		courseOfferingHandler.HandleCreateCourseOffering,
-	)
-	academicGroup.Put(
-		"/course-offering/:id",
-		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
-		courseOfferingHandler.HandleUpdateCourseOffering,
-	)
-	academicGroup.Delete(
-		"/course-offering/:id",
-		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
-		courseOfferingHandler.HandleDeleteCourseOffering,
-	)
+	authModule.SetupRoutes(app)
+	academicModule.SetupRoutes(app)
 
 	log.Fatal().Err(app.Listen(config.CurrentConfig.App.Addr)).Msg("Failed to start server")
 }
