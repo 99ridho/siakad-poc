@@ -55,6 +55,37 @@ func (m *MockAcademicRepository) CreateEnrollment(ctx context.Context, studentID
 	return args.Get(0).(generated.CourseRegistration), args.Error(1)
 }
 
+// Course Offering CRUD methods (not used in enrollment tests, but required by interface)
+func (m *MockAcademicRepository) GetCourseOfferingsWithPagination(ctx context.Context, limit, offset int) ([]repositories.CourseOfferingWithCourse, error) {
+	args := m.Called(ctx, limit, offset)
+	return args.Get(0).([]repositories.CourseOfferingWithCourse), args.Error(1)
+}
+
+func (m *MockAcademicRepository) CountCourseOfferings(ctx context.Context) (int64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockAcademicRepository) CreateCourseOffering(ctx context.Context, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error) {
+	args := m.Called(ctx, semesterID, courseID, sectionCode, capacity, startTime)
+	return args.Get(0).(generated.CourseOffering), args.Error(1)
+}
+
+func (m *MockAcademicRepository) UpdateCourseOffering(ctx context.Context, id, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error) {
+	args := m.Called(ctx, id, semesterID, courseID, sectionCode, capacity, startTime)
+	return args.Get(0).(generated.CourseOffering), args.Error(1)
+}
+
+func (m *MockAcademicRepository) DeleteCourseOffering(ctx context.Context, id string) (generated.CourseOffering, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(generated.CourseOffering), args.Error(1)
+}
+
+func (m *MockAcademicRepository) GetCourseOfferingByIDWithDetails(ctx context.Context, id string) (repositories.CourseOfferingWithCourse, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(repositories.CourseOfferingWithCourse), args.Error(1)
+}
+
 // Test Suite
 type EnrollmentUseCaseTestSuite struct {
 	suite.Suite

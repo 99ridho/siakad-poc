@@ -41,6 +41,56 @@ func (q *Queries) CountCourseOfferingEnrollments(ctx context.Context, courseOffe
 	return count, err
 }
 
+const countCourseOfferings = `-- name: CountCourseOfferings :one
+select count(*) 
+from course_offerings co
+where co.deleted_at IS NULL
+`
+
+func (q *Queries) CountCourseOfferings(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countCourseOfferings)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createCourseOffering = `-- name: CreateCourseOffering :one
+insert into course_offerings (id, semester_id, course_id, section_code, capacity, start_time, created_at, updated_at)
+values (gen_random_uuid(), $1, $2, $3, $4, $5, now(), now())
+returning id, semester_id, course_id, section_code, capacity, start_time, created_at, updated_at, deleted_at
+`
+
+type CreateCourseOfferingParams struct {
+	SemesterID  pgtype.UUID
+	CourseID    pgtype.UUID
+	SectionCode string
+	Capacity    int32
+	StartTime   pgtype.Timestamptz
+}
+
+func (q *Queries) CreateCourseOffering(ctx context.Context, arg CreateCourseOfferingParams) (CourseOffering, error) {
+	row := q.db.QueryRow(ctx, createCourseOffering,
+		arg.SemesterID,
+		arg.CourseID,
+		arg.SectionCode,
+		arg.Capacity,
+		arg.StartTime,
+	)
+	var i CourseOffering
+	err := row.Scan(
+		&i.ID,
+		&i.SemesterID,
+		&i.CourseID,
+		&i.SectionCode,
+		&i.Capacity,
+		&i.StartTime,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const createEnrollment = `-- name: CreateEnrollment :one
 insert into course_registrations (id, student_id, course_offering_id, created_at, updated_at)
 values (gen_random_uuid(), $1, $2, now(), now())
@@ -59,6 +109,30 @@ func (q *Queries) CreateEnrollment(ctx context.Context, arg CreateEnrollmentPara
 		&i.ID,
 		&i.StudentID,
 		&i.CourseOfferingID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const deleteCourseOffering = `-- name: DeleteCourseOffering :one
+update course_offerings 
+set deleted_at = now(), updated_at = now()
+where id = $1 and deleted_at IS NULL
+returning id, semester_id, course_id, section_code, capacity, start_time, created_at, updated_at, deleted_at
+`
+
+func (q *Queries) DeleteCourseOffering(ctx context.Context, id pgtype.UUID) (CourseOffering, error) {
+	row := q.db.QueryRow(ctx, deleteCourseOffering, id)
+	var i CourseOffering
+	err := row.Scan(
+		&i.ID,
+		&i.SemesterID,
+		&i.CourseID,
+		&i.SectionCode,
+		&i.Capacity,
+		&i.StartTime,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -102,6 +176,72 @@ func (q *Queries) GetCourseOffering(ctx context.Context, id pgtype.UUID) (Course
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getCourseOfferingByIDWithDetails = `-- name: GetCourseOfferingByIDWithDetails :one
+select 
+    co.id as course_offering_id,
+    co.semester_id,
+    co.course_id,
+    co.section_code,
+    co.capacity,
+    co.start_time as course_offering_start_time,
+    co.created_at as course_offering_created_at,
+    co.updated_at as course_offering_updated_at,
+    co.deleted_at as course_offering_deleted_at,
+    c.id as course_id,
+    c.code as course_code,
+    c.name as course_name,
+    c.credit,
+    c.created_at as course_created_at,
+    c.updated_at as course_updated_at,
+    c.deleted_at as course_deleted_at
+from course_offerings co
+join courses c on co.course_id = c.id
+where co.id = $1 and co.deleted_at IS NULL
+`
+
+type GetCourseOfferingByIDWithDetailsRow struct {
+	CourseOfferingID        pgtype.UUID
+	SemesterID              pgtype.UUID
+	CourseID                pgtype.UUID
+	SectionCode             string
+	Capacity                int32
+	CourseOfferingStartTime pgtype.Timestamptz
+	CourseOfferingCreatedAt pgtype.Timestamptz
+	CourseOfferingUpdatedAt pgtype.Timestamptz
+	CourseOfferingDeletedAt pgtype.Timestamptz
+	CourseID_2              pgtype.UUID
+	CourseCode              string
+	CourseName              string
+	Credit                  int32
+	CourseCreatedAt         pgtype.Timestamptz
+	CourseUpdatedAt         pgtype.Timestamptz
+	CourseDeletedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetCourseOfferingByIDWithDetails(ctx context.Context, id pgtype.UUID) (GetCourseOfferingByIDWithDetailsRow, error) {
+	row := q.db.QueryRow(ctx, getCourseOfferingByIDWithDetails, id)
+	var i GetCourseOfferingByIDWithDetailsRow
+	err := row.Scan(
+		&i.CourseOfferingID,
+		&i.SemesterID,
+		&i.CourseID,
+		&i.SectionCode,
+		&i.Capacity,
+		&i.CourseOfferingStartTime,
+		&i.CourseOfferingCreatedAt,
+		&i.CourseOfferingUpdatedAt,
+		&i.CourseOfferingDeletedAt,
+		&i.CourseID_2,
+		&i.CourseCode,
+		&i.CourseName,
+		&i.Credit,
+		&i.CourseCreatedAt,
+		&i.CourseUpdatedAt,
+		&i.CourseDeletedAt,
 	)
 	return i, err
 }
@@ -172,6 +312,92 @@ func (q *Queries) GetCourseOfferingWithCourse(ctx context.Context, id pgtype.UUI
 	return i, err
 }
 
+const getCourseOfferingsWithPagination = `-- name: GetCourseOfferingsWithPagination :many
+select 
+    co.id as course_offering_id,
+    co.semester_id,
+    co.course_id,
+    co.section_code,
+    co.capacity,
+    co.start_time as course_offering_start_time,
+    co.created_at as course_offering_created_at,
+    co.updated_at as course_offering_updated_at,
+    co.deleted_at as course_offering_deleted_at,
+    c.id as course_id,
+    c.code as course_code,
+    c.name as course_name,
+    c.credit,
+    c.created_at as course_created_at,
+    c.updated_at as course_updated_at,
+    c.deleted_at as course_deleted_at
+from course_offerings co
+join courses c on co.course_id = c.id
+where co.deleted_at IS NULL
+order by co.created_at desc
+limit $1 offset $2
+`
+
+type GetCourseOfferingsWithPaginationParams struct {
+	Limit  int32
+	Offset int32
+}
+
+type GetCourseOfferingsWithPaginationRow struct {
+	CourseOfferingID        pgtype.UUID
+	SemesterID              pgtype.UUID
+	CourseID                pgtype.UUID
+	SectionCode             string
+	Capacity                int32
+	CourseOfferingStartTime pgtype.Timestamptz
+	CourseOfferingCreatedAt pgtype.Timestamptz
+	CourseOfferingUpdatedAt pgtype.Timestamptz
+	CourseOfferingDeletedAt pgtype.Timestamptz
+	CourseID_2              pgtype.UUID
+	CourseCode              string
+	CourseName              string
+	Credit                  int32
+	CourseCreatedAt         pgtype.Timestamptz
+	CourseUpdatedAt         pgtype.Timestamptz
+	CourseDeletedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetCourseOfferingsWithPagination(ctx context.Context, arg GetCourseOfferingsWithPaginationParams) ([]GetCourseOfferingsWithPaginationRow, error) {
+	rows, err := q.db.Query(ctx, getCourseOfferingsWithPagination, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCourseOfferingsWithPaginationRow
+	for rows.Next() {
+		var i GetCourseOfferingsWithPaginationRow
+		if err := rows.Scan(
+			&i.CourseOfferingID,
+			&i.SemesterID,
+			&i.CourseID,
+			&i.SectionCode,
+			&i.Capacity,
+			&i.CourseOfferingStartTime,
+			&i.CourseOfferingCreatedAt,
+			&i.CourseOfferingUpdatedAt,
+			&i.CourseOfferingDeletedAt,
+			&i.CourseID_2,
+			&i.CourseCode,
+			&i.CourseName,
+			&i.Credit,
+			&i.CourseCreatedAt,
+			&i.CourseUpdatedAt,
+			&i.CourseDeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStudentEnrollmentsWithDetails = `-- name: GetStudentEnrollmentsWithDetails :many
 select 
     cr.id as registration_id,
@@ -220,4 +446,44 @@ func (q *Queries) GetStudentEnrollmentsWithDetails(ctx context.Context, studentI
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCourseOffering = `-- name: UpdateCourseOffering :one
+update course_offerings 
+set semester_id = $2, course_id = $3, section_code = $4, capacity = $5, start_time = $6, updated_at = now()
+where id = $1 and deleted_at IS NULL
+returning id, semester_id, course_id, section_code, capacity, start_time, created_at, updated_at, deleted_at
+`
+
+type UpdateCourseOfferingParams struct {
+	ID          pgtype.UUID
+	SemesterID  pgtype.UUID
+	CourseID    pgtype.UUID
+	SectionCode string
+	Capacity    int32
+	StartTime   pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateCourseOffering(ctx context.Context, arg UpdateCourseOfferingParams) (CourseOffering, error) {
+	row := q.db.QueryRow(ctx, updateCourseOffering,
+		arg.ID,
+		arg.SemesterID,
+		arg.CourseID,
+		arg.SectionCode,
+		arg.Capacity,
+		arg.StartTime,
+	)
+	var i CourseOffering
+	err := row.Scan(
+		&i.ID,
+		&i.SemesterID,
+		&i.CourseID,
+		&i.SectionCode,
+		&i.Capacity,
+		&i.StartTime,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }

@@ -39,6 +39,14 @@ type AcademicRepository interface {
 	CountCourseOfferingEnrollments(ctx context.Context, courseOfferingID string) (int64, error)
 	CheckEnrollmentExists(ctx context.Context, studentID, courseOfferingID string) (bool, error)
 	CreateEnrollment(ctx context.Context, studentID, courseOfferingID string) (generated.CourseRegistration, error)
+	
+	// Course Offering CRUD operations
+	GetCourseOfferingsWithPagination(ctx context.Context, limit, offset int) ([]CourseOfferingWithCourse, error)
+	CountCourseOfferings(ctx context.Context) (int64, error)
+	CreateCourseOffering(ctx context.Context, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error)
+	UpdateCourseOffering(ctx context.Context, id, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error)
+	DeleteCourseOffering(ctx context.Context, id string) (generated.CourseOffering, error)
+	GetCourseOfferingByIDWithDetails(ctx context.Context, id string) (CourseOfferingWithCourse, error)
 }
 
 type DefaultAcademicRepository struct {
@@ -179,4 +187,132 @@ func (r *DefaultAcademicRepository) ConvertPgTimestamp(pgTime pgtype.Timestamptz
 		return time.Time{}, errors.New("invalid timestamp")
 	}
 	return pgTime.Time, nil
+}
+
+// Course Offering CRUD implementations
+func (r *DefaultAcademicRepository) GetCourseOfferingsWithPagination(ctx context.Context, limit, offset int) ([]CourseOfferingWithCourse, error) {
+	params := generated.GetCourseOfferingsWithPaginationParams{
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	}
+	
+	rows, err := r.query.GetCourseOfferingsWithPagination(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	
+	var courseOfferings []CourseOfferingWithCourse
+	for _, row := range rows {
+		courseOfferings = append(courseOfferings, CourseOfferingWithCourse{
+			CourseOfferingID:        row.CourseOfferingID,
+			SemesterID:              row.SemesterID,
+			CourseID:                row.CourseID,
+			SectionCode:             row.SectionCode,
+			Capacity:                row.Capacity,
+			CourseOfferingStartTime: row.CourseOfferingStartTime,
+			CourseCode:              row.CourseCode,
+			CourseName:              row.CourseName,
+			Credit:                  row.Credit,
+		})
+	}
+	
+	return courseOfferings, nil
+}
+
+func (r *DefaultAcademicRepository) CountCourseOfferings(ctx context.Context) (int64, error) {
+	return r.query.CountCourseOfferings(ctx)
+}
+
+func (r *DefaultAcademicRepository) CreateCourseOffering(ctx context.Context, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error) {
+	var semesterUUID, courseUUID pgtype.UUID
+	err := semesterUUID.Scan(semesterID)
+	if err != nil {
+		return generated.CourseOffering{}, errors.New("can't parse semester id as uuid")
+	}
+	err = courseUUID.Scan(courseID)
+	if err != nil {
+		return generated.CourseOffering{}, errors.New("can't parse course id as uuid")
+	}
+
+	startTimePg := pgtype.Timestamptz{
+		Time:  startTime,
+		Valid: true,
+	}
+
+	params := generated.CreateCourseOfferingParams{
+		SemesterID:  semesterUUID,
+		CourseID:    courseUUID,
+		SectionCode: sectionCode,
+		Capacity:    capacity,
+		StartTime:   startTimePg,
+	}
+
+	return r.query.CreateCourseOffering(ctx, params)
+}
+
+func (r *DefaultAcademicRepository) UpdateCourseOffering(ctx context.Context, id, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error) {
+	var idUUID, semesterUUID, courseUUID pgtype.UUID
+	err := idUUID.Scan(id)
+	if err != nil {
+		return generated.CourseOffering{}, errors.New("can't parse course offering id as uuid")
+	}
+	err = semesterUUID.Scan(semesterID)
+	if err != nil {
+		return generated.CourseOffering{}, errors.New("can't parse semester id as uuid")
+	}
+	err = courseUUID.Scan(courseID)
+	if err != nil {
+		return generated.CourseOffering{}, errors.New("can't parse course id as uuid")
+	}
+
+	startTimePg := pgtype.Timestamptz{
+		Time:  startTime,
+		Valid: true,
+	}
+
+	params := generated.UpdateCourseOfferingParams{
+		ID:          idUUID,
+		SemesterID:  semesterUUID,
+		CourseID:    courseUUID,
+		SectionCode: sectionCode,
+		Capacity:    capacity,
+		StartTime:   startTimePg,
+	}
+
+	return r.query.UpdateCourseOffering(ctx, params)
+}
+
+func (r *DefaultAcademicRepository) DeleteCourseOffering(ctx context.Context, id string) (generated.CourseOffering, error) {
+	var uuidID pgtype.UUID
+	err := uuidID.Scan(id)
+	if err != nil {
+		return generated.CourseOffering{}, errors.New("can't parse course offering id as uuid")
+	}
+
+	return r.query.DeleteCourseOffering(ctx, uuidID)
+}
+
+func (r *DefaultAcademicRepository) GetCourseOfferingByIDWithDetails(ctx context.Context, id string) (CourseOfferingWithCourse, error) {
+	var uuidID pgtype.UUID
+	err := uuidID.Scan(id)
+	if err != nil {
+		return CourseOfferingWithCourse{}, errors.New("can't parse course offering id as uuid")
+	}
+
+	row, err := r.query.GetCourseOfferingByIDWithDetails(ctx, uuidID)
+	if err != nil {
+		return CourseOfferingWithCourse{}, err
+	}
+
+	return CourseOfferingWithCourse{
+		CourseOfferingID:        row.CourseOfferingID,
+		SemesterID:              row.SemesterID,
+		CourseID:                row.CourseID,
+		SectionCode:             row.SectionCode,
+		Capacity:                row.Capacity,
+		CourseOfferingStartTime: row.CourseOfferingStartTime,
+		CourseCode:              row.CourseCode,
+		CourseName:              row.CourseName,
+		Credit:                  row.Credit,
+	}, nil
 }
