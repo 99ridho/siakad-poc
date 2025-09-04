@@ -34,9 +34,14 @@ type JWTConfigParams struct {
 	Secret string `json:"secret"`
 }
 
+type AppConfigParams struct {
+	Addr string `json:"addr"`
+}
+
 type Config struct {
 	Database DatabaseConfigParams `json:"database"`
 	JWT      JWTConfigParams      `json:"jwt"`
+	App      AppConfigParams      `json:"app"`
 }
 
 func LoadConfig() error {

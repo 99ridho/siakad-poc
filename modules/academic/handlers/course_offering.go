@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"net/http"
 	"siakad-poc/common"
 	"siakad-poc/modules/academic/usecases"
 	"strconv"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -21,15 +20,12 @@ func NewCourseOfferingHandler(useCase usecases.CourseOfferingUseCase) *CourseOff
 	}
 }
 
-func (h *CourseOfferingHandler) HandleListCourseOfferings(c echo.Context) error {
-	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
-	if requestID == "" {
-		requestID = c.Request().Header.Get("X-Request-ID")
-	}
-	clientIP := c.RealIP()
+func (h *CourseOfferingHandler) HandleListCourseOfferings(c *fiber.Ctx) error {
+	requestID := c.Get(fiber.HeaderXRequestID)
+	clientIP := c.IP()
 
-	pageStr := c.QueryParam("page")
-	pageSizeStr := c.QueryParam("page_size")
+	pageStr := c.Query("page")
+	pageSizeStr := c.Query("page_size")
 
 	page := 1
 	pageSize := 10
@@ -46,7 +42,7 @@ func (h *CourseOfferingHandler) HandleListCourseOfferings(c echo.Context) error 
 		}
 	}
 
-	courseOfferings, pagination, err := h.useCase.GetCourseOfferingsWithPagination(c.Request().Context(), page, pageSize)
+	courseOfferings, pagination, err := h.useCase.GetCourseOfferingsWithPagination(c.Context(), page, pageSize)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -55,22 +51,22 @@ func (h *CourseOfferingHandler) HandleListCourseOfferings(c echo.Context) error 
 			Str("client_ip", clientIP).
 			Int("page", page).
 			Int("page_size", pageSize).
-			Str("path", c.Request().RequestURI).
-			Str("method", c.Request().Method).
+			Str("path", c.OriginalURL()).
+			Str("method", c.Method()).
 			Msg("Failed to get course offerings")
 
-		return c.JSON(http.StatusInternalServerError, common.BaseResponse[any]{
+		return c.Status(fiber.StatusInternalServerError).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Internal server error",
 				Details:   []string{err.Error()},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	return c.JSON(http.StatusOK, common.PaginatedBaseResponse[[]usecases.CourseOfferingResponse]{
+	return c.Status(fiber.StatusOK).JSON(common.PaginatedBaseResponse[[]usecases.CourseOfferingResponse]{
 		BaseResponse: common.BaseResponse[[]usecases.CourseOfferingResponse]{
 			Status: common.StatusSuccess,
 			Data:   &courseOfferings,
@@ -79,31 +75,28 @@ func (h *CourseOfferingHandler) HandleListCourseOfferings(c echo.Context) error 
 	})
 }
 
-func (h *CourseOfferingHandler) HandleCreateCourseOffering(c echo.Context) error {
-	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
-	if requestID == "" {
-		requestID = c.Request().Header.Get("X-Request-ID")
-	}
-	clientIP := c.RealIP()
+func (h *CourseOfferingHandler) HandleCreateCourseOffering(c *fiber.Ctx) error {
+	requestID := c.Get(fiber.HeaderXRequestID)
+	clientIP := c.IP()
 
 	var req usecases.CreateCourseOfferingRequest
-	if err := c.Bind(&req); err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		log.Error().
 			Err(err).
 			Stack().
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
-			Str("path", c.Request().RequestURI).
-			Str("method", c.Request().Method).
+			Str("path", c.OriginalURL()).
+			Str("method", c.Method()).
 			Msg("Failed to parse create course offering request body")
 
-		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+		return c.Status(fiber.StatusBadRequest).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Cannot parse request body",
 				Details:   []string{err.Error()},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
@@ -117,21 +110,21 @@ func (h *CourseOfferingHandler) HandleCreateCourseOffering(c echo.Context) error
 			Str("section_code", req.SectionCode).
 			Int32("capacity", req.Capacity).
 			Strs("validation_errors", validationErrors).
-			Str("path", c.Request().RequestURI).
+			Str("path", c.OriginalURL()).
 			Msg("Create course offering validation failed")
 
-		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+		return c.Status(fiber.StatusBadRequest).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Validation failed",
 				Details:   validationErrors,
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	response, err := h.useCase.CreateCourseOffering(c.Request().Context(), req)
+	response, err := h.useCase.CreateCourseOffering(c.Context(), req)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -142,72 +135,69 @@ func (h *CourseOfferingHandler) HandleCreateCourseOffering(c echo.Context) error
 			Str("semester_id", req.SemesterID).
 			Str("section_code", req.SectionCode).
 			Int32("capacity", req.Capacity).
-			Str("path", c.Request().RequestURI).
+			Str("path", c.OriginalURL()).
 			Msg("Failed to create course offering")
 
-		return c.JSON(http.StatusInternalServerError, common.BaseResponse[any]{
+		return c.Status(fiber.StatusInternalServerError).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Failed to create course offering",
 				Details:   []string{err.Error()},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	return c.JSON(http.StatusOK, common.BaseResponse[usecases.CourseOfferingIDResponse]{
+	return c.Status(fiber.StatusOK).JSON(common.BaseResponse[usecases.CourseOfferingIDResponse]{
 		Status: common.StatusSuccess,
 		Data:   &response,
 	})
 }
 
-func (h *CourseOfferingHandler) HandleUpdateCourseOffering(c echo.Context) error {
-	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
-	if requestID == "" {
-		requestID = c.Request().Header.Get("X-Request-ID")
-	}
-	clientIP := c.RealIP()
+func (h *CourseOfferingHandler) HandleUpdateCourseOffering(c *fiber.Ctx) error {
+	requestID := c.Get(fiber.HeaderXRequestID)
+	clientIP := c.IP()
 
-	id := c.Param("id")
+	id := c.Params("id")
 	if id == "" {
 		log.Warn().
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
-			Str("path", c.Request().RequestURI).
-			Str("method", c.Request().Method).
+			Str("path", c.OriginalURL()).
+			Str("method", c.Method()).
 			Msg("Course offering ID missing from URL parameter")
 
-		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+		return c.Status(fiber.StatusBadRequest).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Course offering ID is required",
 				Details:   []string{"ID parameter is missing"},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
 	var req usecases.UpdateCourseOfferingRequest
-	if err := c.Bind(&req); err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		log.Error().
 			Err(err).
 			Stack().
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("course_offering_id", id).
-			Str("path", c.Request().RequestURI).
-			Str("method", c.Request().Method).
+			Str("path", c.OriginalURL()).
+			Str("method", c.Method()).
 			Msg("Failed to parse update course offering request body")
 
-		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+		return c.Status(fiber.StatusBadRequest).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Cannot parse request body",
 				Details:   []string{err.Error()},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
@@ -222,37 +212,37 @@ func (h *CourseOfferingHandler) HandleUpdateCourseOffering(c echo.Context) error
 			Str("section_code", req.SectionCode).
 			Int32("capacity", req.Capacity).
 			Strs("validation_errors", validationErrors).
-			Str("path", c.Request().RequestURI).
+			Str("path", c.OriginalURL()).
 			Msg("Update course offering validation failed")
 
-		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+		return c.Status(fiber.StatusBadRequest).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Validation failed",
 				Details:   validationErrors,
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	response, err := h.useCase.UpdateCourseOffering(c.Request().Context(), id, req)
+	response, err := h.useCase.UpdateCourseOffering(c.Context(), id, req)
 	if err != nil {
 		if err.Error() == "course offering not found" {
 			log.Warn().
 				Str("request_id", requestID).
 				Str("client_ip", clientIP).
 				Str("course_offering_id", id).
-				Str("path", c.Request().RequestURI).
+				Str("path", c.OriginalURL()).
 				Msg("Course offering not found for update")
 
-			return c.JSON(http.StatusNotFound, common.BaseResponse[any]{
+			return c.Status(fiber.StatusNotFound).JSON(common.BaseResponse[any]{
 				Status: common.StatusError,
 				Error: &common.BaseResponseError{
 					Message:   "Course offering not found",
 					Details:   []string{err.Error()},
 					Timestamp: time.Now().UTC().Format(time.RFC3339),
-					Path:      c.Request().RequestURI,
+					Path:      c.OriginalURL(),
 				},
 			})
 		}
@@ -267,70 +257,67 @@ func (h *CourseOfferingHandler) HandleUpdateCourseOffering(c echo.Context) error
 			Str("semester_id", req.SemesterID).
 			Str("section_code", req.SectionCode).
 			Int32("capacity", req.Capacity).
-			Str("path", c.Request().RequestURI).
+			Str("path", c.OriginalURL()).
 			Msg("Failed to update course offering")
 
-		return c.JSON(http.StatusInternalServerError, common.BaseResponse[any]{
+		return c.Status(fiber.StatusInternalServerError).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Failed to update course offering",
 				Details:   []string{err.Error()},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	return c.JSON(http.StatusOK, common.BaseResponse[usecases.CourseOfferingIDResponse]{
+	return c.Status(fiber.StatusOK).JSON(common.BaseResponse[usecases.CourseOfferingIDResponse]{
 		Status: common.StatusSuccess,
 		Data:   &response,
 	})
 }
 
-func (h *CourseOfferingHandler) HandleDeleteCourseOffering(c echo.Context) error {
-	requestID := c.Response().Header().Get(echo.HeaderXRequestID)
-	if requestID == "" {
-		requestID = c.Request().Header.Get("X-Request-ID")
-	}
-	clientIP := c.RealIP()
+func (h *CourseOfferingHandler) HandleDeleteCourseOffering(c *fiber.Ctx) error {
+	requestID := c.Get(fiber.HeaderXRequestID)
+	clientIP := c.IP()
 
-	id := c.Param("id")
+	id := c.Params("id")
 	if id == "" {
 		log.Warn().
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
-			Str("path", c.Request().RequestURI).
-			Str("method", c.Request().Method).
+			Str("path", c.OriginalURL()).
+			Str("method", c.Method()).
 			Msg("Course offering ID missing from URL parameter")
 
-		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+		return c.Status(fiber.StatusBadRequest).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Course offering ID is required",
 				Details:   []string{"ID parameter is missing"},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	err := h.useCase.DeleteCourseOffering(c.Request().Context(), id)
+	err := h.useCase.DeleteCourseOffering(c.Context(), id)
 	if err != nil {
 		if err.Error() == "course offering not found" {
 			log.Warn().
 				Str("request_id", requestID).
 				Str("client_ip", clientIP).
 				Str("course_offering_id", id).
-				Str("path", c.Request().RequestURI).
+				Str("path", c.OriginalURL()).
 				Msg("Course offering not found for deletion")
 
-			return c.JSON(http.StatusNotFound, common.BaseResponse[any]{
+			return c.Status(fiber.StatusNotFound).JSON(common.BaseResponse[any]{
 				Status: common.StatusError,
 				Error: &common.BaseResponseError{
 					Message:   "Course offering not found",
 					Details:   []string{err.Error()},
 					Timestamp: time.Now().UTC().Format(time.RFC3339),
-					Path:      c.Request().RequestURI,
+					Path:      c.OriginalURL(),
 				},
 			})
 		}
@@ -341,19 +328,19 @@ func (h *CourseOfferingHandler) HandleDeleteCourseOffering(c echo.Context) error
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("course_offering_id", id).
-			Str("path", c.Request().RequestURI).
+			Str("path", c.OriginalURL()).
 			Msg("Failed to delete course offering")
 
-		return c.JSON(http.StatusInternalServerError, common.BaseResponse[any]{
+		return c.Status(fiber.StatusInternalServerError).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
 				Message:   "Failed to delete course offering",
 				Details:   []string{err.Error()},
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Path:      c.Request().RequestURI,
+				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	return c.NoContent(http.StatusNoContent)
+	return c.SendStatus(fiber.StatusNoContent)
 }

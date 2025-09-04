@@ -9,5 +9,8 @@
     },
     "jwt": {
         "secret": "your-secret-key-here-replace-with-secure-random-string"
+    },
+    "app": {
+        "addr": ":8880"
     }
 }

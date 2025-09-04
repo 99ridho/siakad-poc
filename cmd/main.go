@@ -11,8 +11,8 @@ import (
 	authHandlers "siakad-poc/modules/auth/handlers"
 	authUsecases "siakad-poc/modules/auth/usecases"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
@@ -51,42 +51,42 @@ func main() {
 	courseOfferingUseCase := academicUsecases.NewCourseOfferingUseCase(academicRepository)
 	courseOfferingHandler := academicHandlers.NewCourseOfferingHandler(courseOfferingUseCase)
 
-	e := echo.New()
+	app := fiber.New()
 
 	// Auth routes (unprotected)
-	e.POST("/login", loginHandler.HandleLogin)
-	e.POST("/register", registerHandler.HandleRegister)
+	app.Post("/login", loginHandler.HandleLogin)
+	app.Post("/register", registerHandler.HandleRegister)
 
 	// Academic routes (protected with JWT middleware)
-	academicGroup := e.Group("/academic")
+	academicGroup := app.Group("/academic")
 	academicGroup.Use(middlewares.JWT())
-	academicGroup.POST(
+	academicGroup.Post(
 		"/course-offering/:id/enroll",
 		enrollmentHandler.HandleCourseEnrollment,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
 	)
 
 	// Course offering CRUD routes (Admin and Koorprodi only)
-	academicGroup.GET(
+	academicGroup.Get(
 		"/course-offering",
 		courseOfferingHandler.HandleListCourseOfferings,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
 	)
-	academicGroup.POST(
+	academicGroup.Post(
 		"/course-offering",
 		courseOfferingHandler.HandleCreateCourseOffering,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
 	)
-	academicGroup.PUT(
+	academicGroup.Put(
 		"/course-offering/:id",
 		courseOfferingHandler.HandleUpdateCourseOffering,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
 	)
-	academicGroup.DELETE(
+	academicGroup.Delete(
 		"/course-offering/:id",
 		courseOfferingHandler.HandleDeleteCourseOffering,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
 	)
 
-	e.Logger.Fatal(e.Start(":8880"))
+	log.Fatal().Err(app.Listen(config.CurrentConfig.App.Addr)).Msg("Failed to start server")
 }
