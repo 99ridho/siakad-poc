@@ -1,0 +1,21 @@
+[Unit]
+Description=Siakad Service
+After=network.target
+
+[Service]
+# Run as non-root user
+User=siakad
+Group=siakad
+
+# Working directory
+WorkingDirectory=/opt/siakad
+
+# Path to your binary
+ExecStart=/opt/siakad/main
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
