@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"siakad-poc/common"
 	"siakad-poc/config"
 	"siakad-poc/db/repositories"
-	"siakad-poc/modules/auth/handlers"
-	"siakad-poc/modules/auth/usecases"
+	academicHandlers "siakad-poc/modules/academic/handlers"
+	academicUsecases "siakad-poc/modules/academic/usecases"
+	authHandlers "siakad-poc/modules/auth/handlers"
+	authUsecases "siakad-poc/modules/auth/usecases"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -29,16 +32,31 @@ func main() {
 		log.Fatal().Err(err).Msg("cannot create database pool")
 	}
 
+	// Repositories
 	usersRepository := repositories.NewDefaultUserRepository(pool)
-	loginUseCase := usecases.NewLoginUseCase(usersRepository)
-	loginHandler := handlers.NewLoginHandler(loginUseCase)
+	academicRepository := repositories.NewDefaultAcademicRepository(pool)
 
-	registerUseCase := usecases.NewRegisterUseCase(usersRepository)
-	registerHandler := handlers.NewRegisterHandler(registerUseCase)
+	// Auth module
+	loginUseCase := authUsecases.NewLoginUseCase(usersRepository)
+	loginHandler := authHandlers.NewLoginHandler(loginUseCase)
+
+	registerUseCase := authUsecases.NewRegisterUseCase(usersRepository)
+	registerHandler := authHandlers.NewRegisterHandler(registerUseCase)
+
+	// Academic module
+	enrollmentUseCase := academicUsecases.NewCourseEnrollmentUseCase(academicRepository)
+	enrollmentHandler := academicHandlers.NewEnrollmentHandler(enrollmentUseCase)
 
 	e := echo.New()
+
+	// Auth routes (unprotected)
 	e.POST("/login", loginHandler.HandleLogin)
 	e.POST("/register", registerHandler.HandleRegister)
+
+	// Academic routes (protected with JWT middleware)
+	academicGroup := e.Group("/academic")
+	academicGroup.Use(common.JWTMiddleware())
+	academicGroup.POST("/course-offering/:id/enroll", enrollmentHandler.HandleCourseEnrollment)
 
 	e.Logger.Fatal(e.Start(":8880"))
 }
