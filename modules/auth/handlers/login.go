@@ -14,8 +14,8 @@ type LoginHandler struct {
 }
 
 type LoginRequestData struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=1"`
 }
 
 type LoginResponseData struct {
@@ -35,6 +35,19 @@ func (h *LoginHandler) HandleLogin(c echo.Context) error {
 			Error: &common.BaseResponseError{
 				Message:   "Cannot parse login request body",
 				Details:   []string{err.Error()},
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Path:      c.Request().RequestURI,
+			},
+		})
+	}
+
+	// Validate request data
+	if validationErrors := common.ValidateStruct(&loginRequest); validationErrors != nil {
+		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
+			Status: common.StatusError,
+			Error: &common.BaseResponseError{
+				Message:   "Validation failed",
+				Details:   validationErrors,
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
 				Path:      c.Request().RequestURI,
 			},

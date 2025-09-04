@@ -2,7 +2,6 @@ package usecases
 
 import (
 	"context"
-	"regexp"
 	"siakad-poc/db/repositories"
 
 	"github.com/jackc/pgx/v5"
@@ -18,18 +17,11 @@ const (
 	DefaultStudentRole = 3
 )
 
-var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-
 func NewRegisterUseCase(repository repositories.UserRepository) *RegisterUseCase {
 	return &RegisterUseCase{repository: repository}
 }
 
 func (u *RegisterUseCase) Register(ctx context.Context, email, password string) (string, error) {
-	// Validate email format
-	if !emailRegex.MatchString(email) {
-		return "", errors.New("invalid email format")
-	}
-
 	// Check if user already exists
 	_, err := u.repository.GetUserByEmail(ctx, email)
 	if err == nil {

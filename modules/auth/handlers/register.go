@@ -14,9 +14,9 @@ type RegisterHandler struct {
 }
 
 type RegisterRequestData struct {
-	Email           string `json:"email"`
-	Password        string `json:"password"`
-	ConfirmPassword string `json:"confirm_password"`
+	Email           string `json:"email" validate:"required,email"`
+	Password        string `json:"password" validate:"required,min=6"`
+	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=Password"`
 }
 
 type RegisterResponseData struct {
@@ -43,13 +43,13 @@ func (h *RegisterHandler) HandleRegister(c echo.Context) error {
 		})
 	}
 
-	// Validate password confirmation
-	if registerRequest.Password != registerRequest.ConfirmPassword {
+	// Validate request data
+	if validationErrors := common.ValidateStruct(&registerRequest); validationErrors != nil {
 		return c.JSON(http.StatusBadRequest, common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
-				Message:   "Password confirmation does not match",
-				Details:   []string{"password and confirm_password must be the same"},
+				Message:   "Validation failed",
+				Details:   validationErrors,
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
 				Path:      c.Request().RequestURI,
 			},
