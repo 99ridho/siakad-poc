@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a SIAKAD (Student Information Academic System) proof of concept built in Go. It's a clean architecture REST API for managing academic systems with features like user authentication, course registration, and semester management.
+This is a SIAKAD (Student Information Academic System) built in Go following clean architecture principles. It's a mature REST API for managing academic systems with implemented features including user authentication, JWT middleware, and a complete course enrollment system with comprehensive business validation.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ The project follows clean architecture principles with clear separation of conce
   - `repositories/`: Repository pattern implementation
 - **modules/**: Feature modules organized by domain
   - `auth/`: Authentication module with handlers and use cases
-  - `academic/`: Academic management features (placeholder)
+  - `academic/`: Complete course enrollment system with business logic and tests
 
 ## Key Technologies
 
@@ -29,6 +29,8 @@ The project follows clean architecture principles with clear separation of conce
 - **Code Generation**: SQLC for type-safe database queries
 - **Migrations**: Goose (based on migration file naming)
 - **Logging**: Zerolog with structured logging and error stack traces
+- **Testing**: Testify framework with mocks and test suites
+- **Authentication**: JWT middleware for protected routes
 
 ## Database Schema
 
@@ -56,12 +58,18 @@ Copy `config.json.example` to `config.json` and update database credentials.
 # Generate SQLC code after modifying db/sql/*.sql files
 sqlc generate
 
+# Run tests to ensure changes don't break existing functionality
+go test ./...
+
 # Run migrations (if goose is installed)
 goose -dir db/migrations postgres "your-connection-string" up
 ```
 
 ### Code Generation
-After adding new SQL queries to `db/sql/`, run `sqlc generate` to regenerate the type-safe Go code.
+After adding new SQL queries to `db/sql/`, run `sqlc generate` to regenerate the type-safe Go code, then run tests to verify integration.
+
+### Testing
+Run `go test ./...` to execute all tests. New features should include comprehensive unit tests following the existing patterns in `modules/academic/usecases/course_enrollment_test.go`.
 
 ## Architecture Patterns
 
@@ -73,6 +81,9 @@ Business logic is encapsulated in use case structs that depend on repository int
 
 ### Handler Pattern
 HTTP handlers are thin layers that handle request/response marshaling and call use cases.
+
+### Middleware Pattern
+Centralized cross-cutting concerns through Echo middleware, including JWT authentication for protected routes.
 
 ### Dependency Injection
 Dependencies are wired up in `cmd/main.go` following constructor injection pattern.
@@ -87,7 +98,33 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 - Generic response types for type safety
 - Pagination support via `PaginatedBaseResponse`
 - Consistent error response format with timestamps and request paths
+- JWT-protected routes requiring `Authorization: Bearer <token>` header
+- Public authentication endpoints (`/login`, `/register`)
+- Protected academic endpoints (`/academic/*` routes)
 
 ## Testing
 
-No testing framework is currently configured. When adding tests, examine the existing codebase to determine the appropriate testing approach or ask about preferred testing patterns.
+### Current Testing Setup
+- **Framework**: Testify with test suites and mocks
+- **Test Location**: `modules/academic/usecases/course_enrollment_test.go`
+- **Coverage**: Comprehensive unit tests for business logic
+- **Mocking**: Repository layer mocked using testify/mock
+- **Test Patterns**: Test suites with setup/teardown methods
+
+### Running Tests
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with verbose output
+go test -v ./...
+
+# Run specific test suite
+go test -v ./modules/academic/usecases/
+```
+
+### Test Structure
+- **Business Logic Tests**: Enrollment validation, capacity checks, schedule conflicts
+- **Error Scenario Tests**: Repository errors, invalid data, business rule violations
+- **Helper Function Tests**: Time calculations, overlap detection
+- **Mock Setup**: Repository mocks with expected calls and returns
