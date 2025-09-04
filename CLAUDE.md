@@ -32,13 +32,13 @@ The project follows clean architecture principles with clear separation of conce
 
 ## Key Technologies
 
-- **Web Framework**: Echo v4 for HTTP routing, middleware, and request handling
+- **Web Framework**: Fiber v2 for HTTP routing, middleware, and request handling
 - **Database**: PostgreSQL with pgx/v5 driver, connection pooling, and UUID primary keys
 - **Code Generation**: SQLC for type-safe database queries and model generation
 - **Migrations**: Goose for database schema versioning (timestamp-based files)
 - **Logging**: Zerolog with structured JSON logging, error stack traces, and request tracking
 - **Testing**: Testify framework with assertion helpers, mocks, and organized test suites
-- **Security**: JWT authentication + role-based access control with middleware chaining
+- **Security**: JWT authentication + role-based access control with Fiber middleware chaining
 - **Validation**: go-playground/validator/v10 with custom error formatting
 
 ## Database Schema
@@ -70,18 +70,18 @@ The system implements a comprehensive three-tier role hierarchy defined in `cons
 - `RoleKoorprodi (2)`: Program coordinator with course management access
 - `RoleStudent (3)`: Student with limited access to enrollment features
 
-Endpoints are protected using chained middleware for authentication + authorization:
+Endpoints are protected using chained Fiber middleware for authentication + authorization:
 
 ```go
 // Student-only enrollment endpoint
-academicGroup.POST(
+academicGroup.Post(
     "/course-offering/:id/enroll",
     enrollmentHandler.HandleCourseEnrollment,
     middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
 )
 
 // Admin/Coordinator course management endpoints
-academicGroup.GET(
+academicGroup.Get(
     "/course-offering",
     courseOfferingHandler.HandleListCourseOfferings,
     middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
@@ -152,7 +152,7 @@ HTTP handlers are thin layers that handle request/response marshaling and call u
 
 ### Middleware Pattern
 
-Centralized cross-cutting concerns through Echo middleware:
+Centralized cross-cutting concerns through Fiber middleware:
 
 - **JWT Authentication**: Token validation and user context injection (`middlewares/jwt.go`)
 - **Access Control**: Role-based authorization enforcement (`middlewares/access_control.go`)
@@ -262,6 +262,32 @@ This system demonstrates **advanced POC patterns** that can be refined for produ
 - Caching layer (Redis) for improved performance
 - Load testing and capacity planning
 - CI/CD pipeline integration
+
+### Web Framework Migration: Echo v4 → Fiber v2
+
+The system has been successfully migrated from Echo v4 to Fiber v2, maintaining all existing functionality while improving performance and developer experience:
+
+**Migration Benefits:**
+- **Performance**: Fiber v2 offers significantly better performance than Echo v4
+- **Express.js-like API**: More familiar patterns for developers from Node.js background
+- **Built-in Features**: Rich set of built-in middleware and utilities
+- **Active Development**: Regular updates and strong community support
+- **Memory Efficiency**: Lower memory footprint and faster request processing
+
+**Key Changes:**
+- **Server Setup**: `echo.New()` → `fiber.New()`
+- **Route Methods**: `app.POST()` → `app.Post()`, `app.GET()` → `app.Get()`
+- **Handler Signatures**: `func(c echo.Context) error` → `func(c *fiber.Ctx) error`
+- **Request Handling**: `c.Bind()` → `c.BodyParser()`, `c.Param()` → `c.Params()`
+- **Response Methods**: `c.JSON()` → `c.Status().JSON()`, `c.RealIP()` → `c.IP()`
+
+**What Remained Unchanged:**
+- ✅ Clean architecture and business logic
+- ✅ Database operations and SQLC integration
+- ✅ JWT authentication and authorization
+- ✅ Request validation and error handling
+- ✅ Testing patterns and frameworks
+- ✅ All API endpoints and contracts
 
 ### Development Guidance for Production
 

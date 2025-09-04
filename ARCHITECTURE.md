@@ -30,6 +30,7 @@
 - ✅ **Testing Framework**: Comprehensive unit tests with testify and mocking
 - ✅ **Production Logging**: Structured logging with error tracking and request tracing
 - ✅ **Pagination Support**: Database-level pagination with metadata
+- ✅ **Modern Web Framework**: Migrated to Fiber v2 for improved performance and developer experience
 
 ### Key Characteristics
 
@@ -55,7 +56,7 @@ The system implements clean architecture with four distinct layers:
 │                    PRESENTATION LAYER                       │
 │  ┌─────────────────┐  ┌─────────────────┐                  │
 │  │   HTTP Handler  │  │   Validation    │                  │
-│  │   (Echo v4)     │  │  (validator)    │                  │
+│  │   (Fiber v2)    │  │  (validator)    │                  │
 │  └─────────────────┘  └─────────────────┘                  │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -92,7 +93,7 @@ The system implements clean architecture with four distinct layers:
 #### 1. Presentation Layer (`modules/*/handlers/`)
 
 - **Purpose**: HTTP request/response handling
-- **Components**: Echo handlers, request/response structs, validation
+- **Components**: Fiber handlers, request/response structs, validation
 - **Dependencies**: Use cases only
 - **Key Files**: `login.go`, `register.go`
 
@@ -634,35 +635,37 @@ func (c DatabaseConfigParams) DSN() string {
 }
 ```
 
-### Web Framework - Echo v4
+### Web Framework - Fiber v2
 
 #### Server Configuration
 
 ```go
-e := echo.New()
+app := fiber.New()
 
 // Public routes
-e.POST("/login", loginHandler.HandleLogin)
-e.POST("/register", registerHandler.HandleRegister)
+app.Post("/login", loginHandler.HandleLogin)
+app.Post("/register", registerHandler.HandleRegister)
 
 // Protected routes with middleware chain
-academicGroup := e.Group("/academic")
+academicGroup := app.Group("/academic")
 academicGroup.Use(middlewares.JWT())
-academicGroup.POST(
+academicGroup.Post(
     "/course-offering/:id/enroll",
     enrollmentHandler.HandleCourseEnrollment,
     middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
 )
 
-e.Logger.Fatal(e.Start(":8880"))
+log.Fatal().Err(app.Listen(":8880")).Msg("Failed to start server")
 ```
 
 **Features**:
 
-- Fast HTTP routing
-- Middleware support
-- Built-in JSON binding
-- Context-aware request handling
+- Extremely fast HTTP routing (faster than Echo)
+- Rich middleware ecosystem
+- Built-in JSON parsing with `BodyParser()`
+- Express.js-like API design
+- Low memory footprint
+- Context-aware request handling with `*fiber.Ctx`
 
 ### Logging - Zerolog
 
@@ -826,7 +829,7 @@ go mod verify
 
 #### Web Framework
 
-- **Echo v4** (`github.com/labstack/echo/v4`): HTTP router and middleware
+- **Fiber v2** (`github.com/gofiber/fiber/v2`): High-performance HTTP router and middleware
 
 #### Database
 
@@ -902,6 +905,70 @@ siakad-poc/
 ├── ARCHITECTURE.md          # System architecture documentation
 └── CLAUDE.md                # Development guidance
 ```
+
+---
+
+## Web Framework Evolution: Echo v4 → Fiber v2
+
+### Migration Overview
+
+The SIAKAD system has been successfully migrated from Echo v4 to Fiber v2, representing a significant improvement in performance and developer experience while maintaining complete functional compatibility.
+
+### Migration Benefits
+
+**Performance Improvements:**
+- **Faster Routing**: Fiber v2 offers superior routing performance compared to Echo v4
+- **Lower Memory Usage**: Reduced memory footprint for better resource utilization
+- **Higher Throughput**: Improved request handling capacity under load
+- **Optimized JSON Processing**: More efficient request/response parsing
+
+**Developer Experience:**
+- **Express.js Familiarity**: API patterns similar to Express.js for easier adoption
+- **Rich Middleware Ecosystem**: Extensive built-in middleware collection
+- **Better Documentation**: Comprehensive guides and examples
+- **Active Community**: Strong community support and regular updates
+
+### Technical Changes
+
+**API Patterns:**
+```go
+// Before (Echo v4)
+e := echo.New()
+e.POST("/login", handler)
+func handler(c echo.Context) error
+
+// After (Fiber v2)  
+app := fiber.New()
+app.Post("/login", handler)
+func handler(c *fiber.Ctx) error
+```
+
+**Request Handling:**
+- `c.Bind()` → `c.BodyParser()`
+- `c.Param()` → `c.Params()`
+- `c.QueryParam()` → `c.Query()`
+- `c.RealIP()` → `c.IP()`
+- `c.JSON(status, data)` → `c.Status(status).JSON(data)`
+
+### Preserved Architecture
+
+**✅ Unchanged Components:**
+- Clean Architecture layers and separation of concerns
+- Business logic and domain rules
+- Database operations and SQLC integration  
+- JWT authentication and authorization mechanisms
+- Request validation and error handling patterns
+- Testing frameworks and strategies
+- Configuration management and logging
+- All API endpoints and response contracts
+
+### Future-Proofing
+
+The migration to Fiber v2 positions the system for:
+- **Better Scaling**: Improved performance characteristics for production loads
+- **Modern Patterns**: Alignment with current Go web development best practices
+- **Community Support**: Access to actively maintained ecosystem
+- **Performance Optimization**: Foundation for future performance enhancements
 
 ---
 
@@ -986,4 +1053,4 @@ siakad-poc/
 
 ---
 
-_This document reflects the current architectural state of the SIAKAD system as of September 2025. The system represents an advanced proof-of-concept that demonstrates production-ready patterns and can be refined for production deployment. It features complete authentication, comprehensive course management (enrollment + CRUD operations), role-based access control, and extensive testing coverage. For development guidance and implementation patterns, refer to `CLAUDE.md`._
+_This document reflects the current architectural state of the SIAKAD system as of September 2025. The system represents an advanced proof-of-concept that demonstrates production-ready patterns and can be refined for production deployment. It features complete authentication, comprehensive course management (enrollment + CRUD operations), role-based access control, extensive testing coverage, and has been successfully migrated to Fiber v2 for improved performance and developer experience. For development guidance and implementation patterns, refer to `CLAUDE.md`._
