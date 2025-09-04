@@ -1,0 +1,13 @@
+{
+    "database": {
+        "username": "xx",
+        "password": "xx",
+        "host": "xx",
+        "port": "5432",
+        "database": "xxx",
+        "schema": "public"
+    },
+    "jwt": {
+        "secret": "your-secret-key-here-replace-with-secure-random-string"
+    }
+}
