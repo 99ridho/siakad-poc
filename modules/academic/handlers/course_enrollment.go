@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"siakad-poc/common"
+	"siakad-poc/middlewares"
 	"siakad-poc/modules/academic/usecases"
 	"time"
 
@@ -53,7 +54,7 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c echo.Context) error {
 	}
 
 	// Extract student ID from JWT context (set by middleware)
-	studentIDInterface := c.Get(common.StudentIDKey)
+	studentIDInterface := c.Get(middlewares.StudentIDKey)
 	if studentIDInterface == nil {
 		log.Error().
 			Str("request_id", requestID).
@@ -95,7 +96,7 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c echo.Context) error {
 	}
 
 	// Call use case to enroll student
-	err := h.enrollmentUseCase.EnrollStudentToCourseOffering(c.Request().Context(), studentID, courseOfferingID)
+	err := h.enrollmentUseCase.EnrollStudent(c.Request().Context(), studentID, courseOfferingID)
 	if err != nil {
 		// Determine appropriate HTTP status code based on error type
 		statusCode := http.StatusBadRequest

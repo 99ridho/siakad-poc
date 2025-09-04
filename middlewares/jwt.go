@@ -1,7 +1,8 @@
-package common
+package middlewares
 
 import (
 	"net/http"
+	"siakad-poc/common"
 	"siakad-poc/config"
 	"strings"
 	"time"
@@ -21,14 +22,14 @@ const (
 	UserRoleKey  = "user_role"
 )
 
-func JWTMiddleware() echo.MiddlewareFunc {
+func JWT() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
 			if authHeader == "" {
-				return c.JSON(http.StatusUnauthorized, BaseResponse[any]{
-					Status: StatusError,
-					Error: &BaseResponseError{
+				return c.JSON(http.StatusUnauthorized, common.BaseResponse[any]{
+					Status: common.StatusError,
+					Error: &common.BaseResponseError{
 						Message:   "Authorization header required",
 						Details:   []string{"missing Authorization header"},
 						Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -40,9 +41,9 @@ func JWTMiddleware() echo.MiddlewareFunc {
 			// Extract token from "Bearer <token>"
 			tokenParts := strings.Split(authHeader, " ")
 			if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-				return c.JSON(http.StatusUnauthorized, BaseResponse[any]{
-					Status: StatusError,
-					Error: &BaseResponseError{
+				return c.JSON(http.StatusUnauthorized, common.BaseResponse[any]{
+					Status: common.StatusError,
+					Error: &common.BaseResponseError{
 						Message:   "Invalid authorization header format",
 						Details:   []string{"authorization header must be 'Bearer <token>'"},
 						Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -63,9 +64,9 @@ func JWTMiddleware() echo.MiddlewareFunc {
 			})
 
 			if err != nil {
-				return c.JSON(http.StatusUnauthorized, BaseResponse[any]{
-					Status: StatusError,
-					Error: &BaseResponseError{
+				return c.JSON(http.StatusUnauthorized, common.BaseResponse[any]{
+					Status: common.StatusError,
+					Error: &common.BaseResponseError{
 						Message:   "Invalid token",
 						Details:   []string{err.Error()},
 						Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -75,9 +76,9 @@ func JWTMiddleware() echo.MiddlewareFunc {
 			}
 
 			if !token.Valid {
-				return c.JSON(http.StatusUnauthorized, BaseResponse[any]{
-					Status: StatusError,
-					Error: &BaseResponseError{
+				return c.JSON(http.StatusUnauthorized, common.BaseResponse[any]{
+					Status: common.StatusError,
+					Error: &common.BaseResponseError{
 						Message:   "Token is not valid",
 						Details:   []string{"token validation failed"},
 						Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -88,9 +89,9 @@ func JWTMiddleware() echo.MiddlewareFunc {
 
 			claims, ok := token.Claims.(*JWTClaims)
 			if !ok {
-				return c.JSON(http.StatusUnauthorized, BaseResponse[any]{
-					Status: StatusError,
-					Error: &BaseResponseError{
+				return c.JSON(http.StatusUnauthorized, common.BaseResponse[any]{
+					Status: common.StatusError,
+					Error: &common.BaseResponseError{
 						Message:   "Invalid token claims",
 						Details:   []string{"unable to parse token claims"},
 						Timestamp: time.Now().UTC().Format(time.RFC3339),

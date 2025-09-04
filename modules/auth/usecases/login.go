@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"siakad-poc/config"
+	"siakad-poc/constants"
 	"siakad-poc/db/repositories"
 	"time"
 
@@ -17,8 +18,8 @@ type LoginUseCase struct {
 }
 
 type JWTClaims struct {
-	UserID string `json:"user_id"`
-	Role   int64  `json:"role"`
+	UserID string             `json:"user_id"`
+	Role   constants.RoleType `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -42,8 +43,8 @@ func (u *LoginUseCase) Login(ctx context.Context, email, password string) (strin
 		return "", errors.New("invalid credentials")
 	}
 
-	// Convert role from pgtype.Numeric to int32
-	var userRole int64
+	// Convert role from pgtype.Numeric to RoleType (int64)
+	var userRole constants.RoleType
 	err = user.Role.Scan(&userRole)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to parse user role")

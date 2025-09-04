@@ -97,7 +97,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_Success() {
 	suite.mockRepo.On("CreateEnrollment", suite.ctx, suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
 
 	// Execute
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -109,7 +109,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_DuplicateEnrollment()
 	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(true, nil)
 
 	// Execute
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -123,7 +123,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CourseOfferingNotFoun
 	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(repositories.CourseOfferingWithCourse{}, pgx.ErrNoRows)
 
 	// Execute
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -148,7 +148,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CapacityFull() {
 	suite.mockRepo.On("CountCourseOfferingEnrollments", suite.ctx, suite.courseID).Return(int64(10), nil)
 
 	// Execute
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -185,7 +185,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_ScheduleOverlap() {
 	suite.mockRepo.On("GetStudentEnrollmentsWithDetails", suite.ctx, suite.studentID).Return(existingEnrollments, nil)
 
 	// Execute
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -223,7 +223,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_NoScheduleOverlap() {
 	suite.mockRepo.On("CreateEnrollment", suite.ctx, suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
 
 	// Execute
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -234,7 +234,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_RepositoryErrors() {
 	// Test CheckEnrollmentExists error
 	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, errors.New("db error"))
 
-	err := suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to check enrollment existence")
 
@@ -246,7 +246,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_RepositoryErrors() {
 	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
 	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(repositories.CourseOfferingWithCourse{}, errors.New("db error"))
 
-	err = suite.useCase.EnrollStudentToCourseOffering(suite.ctx, suite.studentID, suite.courseID)
+	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to get course offering details")
 }

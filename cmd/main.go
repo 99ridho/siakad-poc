@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"siakad-poc/common"
 	"siakad-poc/config"
+	"siakad-poc/constants"
 	"siakad-poc/db/repositories"
+	"siakad-poc/middlewares"
 	academicHandlers "siakad-poc/modules/academic/handlers"
 	academicUsecases "siakad-poc/modules/academic/usecases"
 	authHandlers "siakad-poc/modules/auth/handlers"
@@ -55,8 +56,12 @@ func main() {
 
 	// Academic routes (protected with JWT middleware)
 	academicGroup := e.Group("/academic")
-	academicGroup.Use(common.JWTMiddleware())
-	academicGroup.POST("/course-offering/:id/enroll", enrollmentHandler.HandleCourseEnrollment)
+	academicGroup.Use(middlewares.JWT())
+	academicGroup.POST(
+		"/course-offering/:id/enroll",
+		enrollmentHandler.HandleCourseEnrollment,
+		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+	)
 
 	e.Logger.Fatal(e.Start(":8880"))
 }

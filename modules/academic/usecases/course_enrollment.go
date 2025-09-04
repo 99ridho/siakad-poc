@@ -21,7 +21,7 @@ func NewCourseEnrollmentUseCase(academicRepo repositories.AcademicRepository) *C
 	}
 }
 
-func (u *CourseEnrollmentUseCase) EnrollStudentToCourseOffering(ctx context.Context, studentID, courseOfferingID string) error {
+func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, courseOfferingID string) error {
 	// 1. Check if student is already enrolled in this course offering
 	exists, err := u.academicRepo.CheckEnrollmentExists(ctx, studentID, courseOfferingID)
 	if err != nil {
