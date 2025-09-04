@@ -48,6 +48,9 @@ func main() {
 	enrollmentUseCase := academicUsecases.NewCourseEnrollmentUseCase(academicRepository)
 	enrollmentHandler := academicHandlers.NewEnrollmentHandler(enrollmentUseCase)
 
+	courseOfferingUseCase := academicUsecases.NewCourseOfferingUseCase(academicRepository)
+	courseOfferingHandler := academicHandlers.NewCourseOfferingHandler(courseOfferingUseCase)
+
 	e := echo.New()
 
 	// Auth routes (unprotected)
@@ -61,6 +64,28 @@ func main() {
 		"/course-offering/:id/enroll",
 		enrollmentHandler.HandleCourseEnrollment,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+	)
+
+	// Course offering CRUD routes (Admin and Koorprodi only)
+	academicGroup.GET(
+		"/course-offering",
+		courseOfferingHandler.HandleListCourseOfferings,
+		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+	)
+	academicGroup.POST(
+		"/course-offering",
+		courseOfferingHandler.HandleCreateCourseOffering,
+		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+	)
+	academicGroup.PUT(
+		"/course-offering/:id",
+		courseOfferingHandler.HandleUpdateCourseOffering,
+		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+	)
+	academicGroup.DELETE(
+		"/course-offering/:id",
+		courseOfferingHandler.HandleDeleteCourseOffering,
+		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
 	)
 
 	e.Logger.Fatal(e.Start(":8880"))
