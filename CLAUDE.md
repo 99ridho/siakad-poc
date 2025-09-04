@@ -13,6 +13,10 @@ The project follows clean architecture principles with clear separation of conce
 - **cmd/**: Application entry point and dependency injection
 - **config/**: Configuration management (JSON-based with PostgreSQL settings)  
 - **common/**: Shared types and utilities (standardized API responses with generics)
+- **constants/**: System constants and role definitions
+- **middlewares/**: HTTP middleware for authentication and authorization
+  - `jwt.go`: JWT token validation and user context injection
+  - `access_control.go`: Role-based access control enforcement
 - **db/**: Database layer with SQLC-generated code
   - `migrations/`: SQL migration files using goose format
   - `sql/`: SQL query definitions for SQLC
@@ -30,7 +34,7 @@ The project follows clean architecture principles with clear separation of conce
 - **Migrations**: Goose (based on migration file naming)
 - **Logging**: Zerolog with structured logging and error stack traces
 - **Testing**: Testify framework with mocks and test suites
-- **Authentication**: JWT middleware for protected routes
+- **Authentication**: Separate JWT authentication and role-based access control middleware
 
 ## Database Schema
 
@@ -49,6 +53,22 @@ All tables use UUID primary keys and include audit fields (created_at, updated_a
 go run cmd/main.go
 ```
 The server starts on port 8880 by default.
+
+### Role-Based Access Control
+The system implements a three-tier role hierarchy defined in `constants/constant.go`:
+- `RoleAdmin (1)`: System administrator with full access
+- `RoleKoorprodi (2)`: Program coordinator with management access
+- `RoleStudent (3)`: Student with limited access to enrollment features
+
+Endpoints are protected using middleware chains:
+```go
+// Example: Student-only enrollment endpoint
+academicGroup.POST(
+    "/course-offering/:id/enroll",
+    enrollmentHandler.HandleCourseEnrollment,
+    middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+)
+```
 
 ### Configuration
 Copy `config.json.example` to `config.json` and update database credentials.
@@ -83,7 +103,10 @@ Business logic is encapsulated in use case structs that depend on repository int
 HTTP handlers are thin layers that handle request/response marshaling and call use cases.
 
 ### Middleware Pattern
-Centralized cross-cutting concerns through Echo middleware, including JWT authentication for protected routes.
+Centralized cross-cutting concerns through Echo middleware:
+- **JWT Authentication**: Token validation and user context injection (`middlewares/jwt.go`)
+- **Access Control**: Role-based authorization enforcement (`middlewares/access_control.go`)
+- **Chained Middleware**: Combined authentication and authorization for protected routes
 
 ### Dependency Injection
 Dependencies are wired up in `cmd/main.go` following constructor injection pattern.
@@ -100,7 +123,8 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 - Consistent error response format with timestamps and request paths
 - JWT-protected routes requiring `Authorization: Bearer <token>` header
 - Public authentication endpoints (`/login`, `/register`)
-- Protected academic endpoints (`/academic/*` routes)
+- Protected academic endpoints (`/academic/*` routes) with role-based access control
+- Role-restricted enrollment endpoint (students only)
 
 ## Testing
 

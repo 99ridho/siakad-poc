@@ -257,6 +257,7 @@ POST /academic/course-offering/:id/enroll - Enroll student in course offering
 ```
 
 **Authentication**: Protected routes require `Authorization: Bearer <jwt-token>` header.
+**Authorization**: Role-based access control enforced via middleware - enrollment endpoint restricted to students only (`RoleStudent = 3`).
 
 ### Standardized Response Format
 
@@ -487,16 +488,47 @@ modules/academic/
 ```
 common/
 ├── base_response.go      # Standardized API responses
-├── validator.go          # Request validation utilities
-└── jwt_middleware.go     # JWT authentication middleware
+└── validator.go          # Request validation utilities
 ```
 
-#### JWT Middleware Features
+### Middleware System (`middlewares/`)
+
+```
+middlewares/
+├── jwt.go               # JWT authentication middleware
+└── access_control.go    # Role-based access control middleware
+```
+
+#### JWT Middleware Features (`jwt.go`)
 - **Token Extraction**: Parses `Bearer <token>` from Authorization header
 - **Token Validation**: Verifies JWT signature and expiration
 - **Claims Extraction**: Adds user ID and role to request context
 - **Error Responses**: Standardized unauthorized responses
 - **Security**: HMAC SHA-256 signature verification
+
+#### Access Control Middleware Features (`access_control.go`)
+- **Role-Based Access Control**: Restricts endpoints by user roles
+- **Dynamic Role Checking**: Configurable role requirements per endpoint
+- **Integration**: Works seamlessly with JWT middleware
+- **Authorization**: Enforces role-based authorization after authentication
+
+### Constants (`constants/`)
+
+```
+constants/
+└── constant.go          # Role definitions and system constants
+```
+
+#### Role System Definition
+```go
+type RoleType = int64
+
+const (
+    RoleAdmin     RoleType = 1  // System administrator
+    RoleKoorprodi RoleType = 2  // Program coordinator
+    RoleStudent   RoleType = 3  // Student user
+)
+```
 
 ---
 
@@ -539,8 +571,20 @@ func (c DatabaseConfigParams) DSN() string {
 #### Server Configuration
 ```go
 e := echo.New()
+
+// Public routes
 e.POST("/login", loginHandler.HandleLogin)
 e.POST("/register", registerHandler.HandleRegister)
+
+// Protected routes with middleware chain
+academicGroup := e.Group("/academic")
+academicGroup.Use(middlewares.JWT())
+academicGroup.POST(
+    "/course-offering/:id/enroll",
+    enrollmentHandler.HandleCourseEnrollment,
+    middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+)
+
 e.Logger.Fatal(e.Start(":8880"))
 ```
 
@@ -722,8 +766,12 @@ siakad-poc/
 │   └── config.go
 ├── common/               # Shared utilities
 │   ├── base_response.go  # Standardized responses
-│   ├── validator.go      # Request validation
-│   └── jwt_middleware.go # JWT authentication middleware
+│   └── validator.go      # Request validation
+├── constants/            # System constants
+│   └── constant.go       # Role definitions
+├── middlewares/          # HTTP middleware
+│   ├── jwt.go           # JWT authentication
+│   └── access_control.go # Role-based access control
 ├── db/                   # Database layer
 │   ├── generated/        # SQLC generated code
 │   │   ├── models.go
