@@ -43,17 +43,10 @@ func (u *LoginUseCase) Login(ctx context.Context, email, password string) (strin
 		return "", errors.New("invalid credentials")
 	}
 
-	// Convert role from pgtype.Numeric to RoleType (int64)
-	var userRole constants.RoleType
-	err = user.Role.Scan(&userRole)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to parse user role")
-	}
-
 	// Generate JWT token
 	claims := JWTClaims{
 		UserID: user.ID.String(),
-		Role:   userRole,
+		Role:   user.Role.Int.Int64(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

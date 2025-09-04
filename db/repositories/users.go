@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"math/big"
 	"siakad-poc/db/generated"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -42,16 +43,13 @@ func (r *DefaultUserRepository) GetUserByEmail(ctx context.Context, email string
 }
 
 func (r *DefaultUserRepository) CreateUser(ctx context.Context, email, password string, role int64) (generated.User, error) {
-	var roleNumeric pgtype.Numeric
-	err := roleNumeric.Scan(role)
-	if err != nil {
-		return generated.User{}, errors.New("can't parse role as numeric")
-	}
-
 	params := generated.CreateUserParams{
 		Email:    email,
 		Password: password,
-		Role:     roleNumeric,
+		Role: pgtype.Numeric{
+			Int:   big.NewInt(role),
+			Valid: true,
+		},
 	}
 
 	return r.query.CreateUser(ctx, params)

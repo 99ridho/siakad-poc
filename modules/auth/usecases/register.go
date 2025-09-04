@@ -14,7 +14,7 @@ type RegisterUseCase struct {
 }
 
 const (
-	DefaultStudentRole = 3
+	DefaultStudentRole int64 = 3
 )
 
 func NewRegisterUseCase(repository repositories.UserRepository) *RegisterUseCase {
