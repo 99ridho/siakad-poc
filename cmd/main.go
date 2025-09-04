@@ -12,6 +12,11 @@ import (
 	authUsecases "siakad-poc/modules/auth/usecases"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/healthcheck"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -52,6 +57,16 @@ func main() {
 	courseOfferingHandler := academicHandlers.NewCourseOfferingHandler(courseOfferingUseCase)
 
 	app := fiber.New()
+	app.Use(
+		cors.New(),
+		helmet.New(),
+		recover.New(),
+		logger.New(),
+		healthcheck.New(healthcheck.Config{
+			LivenessEndpoint:  "/live",
+			ReadinessEndpoint: "/ready",
+		}),
+	)
 
 	// Auth routes (unprotected)
 	app.Post("/login", loginHandler.HandleLogin)
@@ -62,30 +77,30 @@ func main() {
 	academicGroup.Use(middlewares.JWT())
 	academicGroup.Post(
 		"/course-offering/:id/enroll",
-		enrollmentHandler.HandleCourseEnrollment,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+		enrollmentHandler.HandleCourseEnrollment,
 	)
 
 	// Course offering CRUD routes (Admin and Koorprodi only)
 	academicGroup.Get(
 		"/course-offering",
-		courseOfferingHandler.HandleListCourseOfferings,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+		courseOfferingHandler.HandleListCourseOfferings,
 	)
 	academicGroup.Post(
 		"/course-offering",
-		courseOfferingHandler.HandleCreateCourseOffering,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+		courseOfferingHandler.HandleCreateCourseOffering,
 	)
 	academicGroup.Put(
 		"/course-offering/:id",
-		courseOfferingHandler.HandleUpdateCourseOffering,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+		courseOfferingHandler.HandleUpdateCourseOffering,
 	)
 	academicGroup.Delete(
 		"/course-offering/:id",
-		courseOfferingHandler.HandleDeleteCourseOffering,
 		middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+		courseOfferingHandler.HandleDeleteCourseOffering,
 	)
 
 	log.Fatal().Err(app.Listen(config.CurrentConfig.App.Addr)).Msg("Failed to start server")
