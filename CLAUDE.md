@@ -22,9 +22,15 @@ The project follows clean architecture principles with clear separation of conce
   - `sql/`: SQL query definitions for SQLC
   - `generated/`: SQLC-generated Go code (models, queries)
   - `repositories/`: Repository pattern implementation
-- **modules/**: Feature modules organized by domain
-  - `auth/`: Authentication module with handlers and use cases
-  - `academic/`: Complete academic management system:
+- **modules/**: Feature modules organized by domain with modular architecture
+  - `auth/`: Authentication module with self-contained architecture:
+    - `module.go`: Module initialization and route setup
+    - `handlers/`: Request/response handling (login, register)
+    - `usecases/`: Business logic and domain rules
+  - `academic/`: Complete academic management system with modular design:
+    - `module.go`: Module initialization and protected route setup
+    - `handlers/`: Course enrollment and offering handlers
+    - `usecases/`: Business validation and CRUD operations
     - Course enrollment with advanced business validation
     - Course offering CRUD operations with pagination
     - Role-based endpoint access control
@@ -32,7 +38,7 @@ The project follows clean architecture principles with clear separation of conce
 
 ## Key Technologies
 
-- **Web Framework**: Fiber v2 for HTTP routing, middleware, and request handling
+- **Web Framework**: Fiber v2 with production middleware stack (CORS, Helmet, Logger, Recovery, Health Checks)
 - **Database**: PostgreSQL with pgx/v5 driver, connection pooling, and UUID primary keys
 - **Code Generation**: SQLC for type-safe database queries and model generation
 - **Migrations**: Goose for database schema versioning (timestamp-based files)
@@ -60,7 +66,12 @@ All tables use UUID primary keys and include comprehensive audit fields (created
 go run cmd/main.go
 ```
 
-The server starts on port 8880 by default.
+The server starts on port 8880 by default with the following production features:
+- Health check endpoints: `/live` (liveness) and `/ready` (readiness)
+- CORS enabled for cross-origin requests
+- Security headers via Helmet middleware
+- Request/response logging
+- Panic recovery middleware
 
 ### Role-Based Access Control
 
@@ -73,20 +84,54 @@ The system implements a comprehensive three-tier role hierarchy defined in `cons
 Endpoints are protected using chained Fiber middleware for authentication + authorization:
 
 ```go
+// Auth module routes (public)
+authRoutes := fiberApp.Group("/auth")
+authRoutes.Post("/login", m.loginHandler.HandleLogin)
+authRoutes.Post("/register", m.registerHandler.HandleRegister)
+
+// Academic module routes (protected)
+academicGroup := fiberApp.Group("/academic")
+academicGroup.Use(middlewares.JWT())
+
 // Student-only enrollment endpoint
 academicGroup.Post(
     "/course-offering/:id/enroll",
-    enrollmentHandler.HandleCourseEnrollment,
     middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+    m.courseEnrollmentHandler.HandleCourseEnrollment,
 )
 
 // Admin/Coordinator course management endpoints
 academicGroup.Get(
-    "/course-offering",
-    courseOfferingHandler.HandleListCourseOfferings,
+    "/course-offerings",
     middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleAdmin, constants.RoleKoorprodi}),
+    m.courseOfferingHandler.HandleListCourseOfferings,
 )
 ```
+
+### Production Middleware Stack
+
+The application includes a comprehensive production-ready middleware stack:
+
+```go
+app := fiber.New()
+app.Use(
+    cors.New(),        // Cross-Origin Resource Sharing
+    helmet.New(),      // Security headers
+    recover.New(),     // Panic recovery
+    logger.New(),      // Request/response logging
+    healthcheck.New(healthcheck.Config{
+        LivenessEndpoint:  "/live",   // Kubernetes liveness probe
+        ReadinessEndpoint: "/ready",  // Kubernetes readiness probe
+    }),
+)
+```
+
+**Middleware Features:**
+- **CORS**: Configurable cross-origin resource sharing
+- **Helmet**: Security headers (XSS protection, content type sniffing, etc.)
+- **Recovery**: Automatic panic recovery with graceful error responses
+- **Logger**: Structured request/response logging
+- **Health Checks**: Kubernetes-ready liveness and readiness probes
 
 ### Configuration
 
@@ -174,15 +219,19 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 - Pagination support via `PaginatedBaseResponse`
 - Consistent error response format with timestamps and request paths
 - JWT-protected routes requiring `Authorization: Bearer <token>` header
-- **Public Endpoints**: Authentication routes (`/login`, `/register`)
-- **Protected Academic Endpoints**: Complete `/academic/*` route group with JWT authentication
-- **Role-Based Access Control**:
-  - Student-only: Course enrollment (`POST /academic/course-offering/:id/enroll`)
-  - Admin/Coordinator-only: Course offering CRUD operations
-    - `GET /academic/course-offering` (list with pagination)
-    - `POST /academic/course-offering` (create)
-    - `PUT /academic/course-offering/:id` (update)
-    - `DELETE /academic/course-offering/:id` (soft delete)
+
+### Public Endpoints
+- `POST /auth/login` - User authentication
+- `POST /auth/register` - User registration
+- `GET /live` - Liveness probe for Kubernetes
+- `GET /ready` - Readiness probe for Kubernetes
+
+### Protected Academic Endpoints
+- `GET /academic/course-offerings` - List course offerings (Admin/Coordinator only)
+- `POST /academic/course-offering` - Create course offering (Admin/Coordinator only)
+- `PUT /academic/course-offering/:id` - Update course offering (Admin/Coordinator only)
+- `DELETE /academic/course-offering/:id` - Delete course offering (Admin/Coordinator only)
+- `POST /academic/course-offering/:id/enroll` - Enroll in course (Students only)
 
 ## Testing
 

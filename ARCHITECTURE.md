@@ -461,7 +461,31 @@ Current role hierarchy:
 
 ---
 
-## Module Structure
+## Modular Architecture Pattern
+
+The system has been restructured around a modular architecture pattern where each feature domain is self-contained with its own module definition.
+
+### Module Pattern
+
+Each module follows the same structure:
+
+```go
+type ModuleName struct {
+    // Dependencies (repositories, use cases, handlers)
+}
+
+func NewModule(pool *pgxpool.Pool) *ModuleName {
+    // Initialize dependencies
+    // Wire up constructors
+    // Return configured module
+}
+
+func (m *ModuleName) SetupRoutes(fiberApp *fiber.App) {
+    // Define route groups
+    // Apply middleware
+    // Register handlers
+}
+```
 
 ### Authentication Module (`modules/auth/`)
 
@@ -475,6 +499,29 @@ modules/auth/
     └── register.go       # Registration business logic
 ```
 
+#### Module Structure (`modules/auth/module.go`)
+
+```go
+type AuthModule struct {
+    userRepository  repositories.UserRepository
+    loginUseCase    *usecases.LoginUseCase
+    loginHandler    *handlers.LoginHandler
+    registerUseCase *usecases.RegisterUseCase
+    registerHandler *handlers.RegisterHandler
+}
+
+func NewModule(pool *pgxpool.Pool) *AuthModule {
+    // Wire up all dependencies
+    return &AuthModule{...}
+}
+
+func (m *AuthModule) SetupRoutes(fiberApp *fiber.App) {
+    authRoutes := fiberApp.Group("/auth")
+    authRoutes.Post("/login", m.loginHandler.HandleLogin)
+    authRoutes.Post("/register", m.registerHandler.HandleRegister)
+}
+```
+
 #### Handler Layer Pattern
 
 ```go
@@ -482,8 +529,8 @@ type LoginHandler struct {
     usecase *usecases.LoginUseCase
 }
 
-func (h *LoginHandler) HandleLogin(c echo.Context) error {
-    // 1. Bind request
+func (h *LoginHandler) HandleLogin(c *fiber.Ctx) error {
+    // 1. Parse request body
     // 2. Validate input
     // 3. Call use case
     // 4. Return response
