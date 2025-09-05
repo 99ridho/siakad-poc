@@ -25,8 +25,9 @@ The project follows clean architecture principles with clear separation of conce
 - **modules/**: Feature modules organized by domain with modular architecture
   - `auth/`: Authentication module with self-contained architecture:
     - `module.go`: Module initialization and route setup
-    - `handlers/`: Request/response handling (login, register)
+    - `handlers/`: Request/response handling (login only)
     - `usecases/`: Business logic and domain rules
+    - `routable.go`: RoutableModule interface definition for consistent module pattern
   - `academic/`: Complete academic management system with modular design:
     - `module.go`: Module initialization and protected route setup
     - `handlers/`: Course enrollment and offering handlers
@@ -87,7 +88,6 @@ Endpoints are protected using chained Fiber middleware for authentication + auth
 // Auth module routes (public)
 authRoutes := fiberApp.Group("/auth")
 authRoutes.Post("/login", m.loginHandler.HandleLogin)
-authRoutes.Post("/register", m.registerHandler.HandleRegister)
 
 // Academic module routes (protected)
 academicGroup := fiberApp.Group("/academic")
@@ -132,6 +132,36 @@ app.Use(
 - **Recovery**: Automatic panic recovery with graceful error responses
 - **Logger**: Structured request/response logging
 - **Health Checks**: Kubernetes-ready liveness and readiness probes
+
+### Graceful Shutdown
+
+The application implements graceful shutdown with proper signal handling:
+
+```go
+// Signal handling for SIGINT and SIGTERM
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+// Graceful shutdown with 30-second timeout
+shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer shutdownCancel()
+
+if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+    log.Error().Err(err).Msg("Server forced to shutdown")
+} else {
+    log.Info().Msg("Server shutdown gracefully")
+}
+
+// Clean database connection pool closure
+pool.Close()
+```
+
+**Graceful Shutdown Features:**
+- **Signal Handling**: Responds to SIGINT (Ctrl+C) and SIGTERM signals
+- **Connection Draining**: 30-second timeout for active requests to complete
+- **Resource Cleanup**: Proper database connection pool closure
+- **Structured Logging**: Detailed shutdown process logging
+- **Production Ready**: Kubernetes-compatible shutdown behavior
 
 ### Configuration
 
@@ -203,9 +233,43 @@ Centralized cross-cutting concerns through Fiber middleware:
 - **Access Control**: Role-based authorization enforcement (`middlewares/access_control.go`)
 - **Chained Middleware**: Combined authentication and authorization for protected routes
 
+### RoutableModule Interface Pattern
+
+All modules implement the `RoutableModule` interface for consistent route setup:
+
+```go
+// modules/routable.go
+type RoutableModule interface {
+    SetupRoutes(fiber *fiber.App, prefix string)
+}
+
+// Interface conformance check in each module
+var _ modules.RoutableModule = (*AuthModule)(nil)
+var _ modules.RoutableModule = (*AcademicModule)(nil)
+```
+
+**Benefits:**
+- **Consistency**: Uniform route setup pattern across all modules
+- **Type Safety**: Compile-time interface conformance verification
+- **Modularity**: Clean separation of routing concerns per domain
+- **Scalability**: Easy addition of new modules with guaranteed interface compliance
+
 ### Dependency Injection
 
-Dependencies are wired up in `cmd/main.go` following constructor injection pattern.
+Dependencies are wired up in `cmd/main.go` following constructor injection pattern with modular route mapping:
+
+```go
+// Mapping HTTP route prefix to relevant module
+routePrefixToModuleMapping := map[string]modules.RoutableModule{
+    "/auth":     auth.NewModule(pool),
+    "/academic": academic.NewModule(pool),
+}
+
+// Setup routes per module
+for pfx, module := range routePrefixToModuleMapping {
+    module.SetupRoutes(app, pfx)
+}
+```
 
 ### Error Handling
 
@@ -222,7 +286,6 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 
 ### Public Endpoints
 - `POST /auth/login` - User authentication
-- `POST /auth/register` - User registration
 - `GET /live` - Liveness probe for Kubernetes
 - `GET /ready` - Readiness probe for Kubernetes
 

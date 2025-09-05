@@ -11,11 +11,9 @@ import (
 )
 
 type AuthModule struct {
-	userRepository  repositories.UserRepository
-	loginUseCase    *usecases.LoginUseCase
-	loginHandler    *handlers.LoginHandler
-	registerUseCase *usecases.RegisterUseCase
-	registerHandler *handlers.RegisterHandler
+	userRepository repositories.UserRepository
+	loginUseCase   *usecases.LoginUseCase
+	loginHandler   *handlers.LoginHandler
 }
 
 // Compile time interface conformance check
@@ -27,20 +25,14 @@ func NewModule(pool *pgxpool.Pool) *AuthModule {
 	loginUseCase := usecases.NewLoginUseCase(usersRepository)
 	loginHandler := handlers.NewLoginHandler(loginUseCase)
 
-	registerUseCase := usecases.NewRegisterUseCase(usersRepository)
-	registerHandler := handlers.NewRegisterHandler(registerUseCase)
-
 	return &AuthModule{
-		userRepository:  usersRepository,
-		loginUseCase:    loginUseCase,
-		loginHandler:    loginHandler,
-		registerUseCase: registerUseCase,
-		registerHandler: registerHandler,
+		userRepository: usersRepository,
+		loginUseCase:   loginUseCase,
+		loginHandler:   loginHandler,
 	}
 }
 
 func (m *AuthModule) SetupRoutes(fiberApp *fiber.App, prefix string) {
 	authRoutes := fiberApp.Group(prefix)
 	authRoutes.Post("/login", m.loginHandler.HandleLogin)
-	authRoutes.Post("/register", m.registerHandler.HandleRegister)
 }

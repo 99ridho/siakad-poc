@@ -21,7 +21,7 @@
 
 ### Current Implementation Status
 
-- ✅ **Authentication System**: Login and registration with JWT tokens + middleware
+- ✅ **Authentication System**: Login with JWT tokens + middleware
 - ✅ **Database Layer**: Complete schema with SQLC integration and soft deletes
 - ✅ **API Standards**: Standardized responses with comprehensive validation
 - ✅ **Clean Architecture**: Proper separation of concerns with dependency injection
@@ -31,6 +31,9 @@
 - ✅ **Production Logging**: Structured logging with error tracking and request tracing
 - ✅ **Pagination Support**: Database-level pagination with metadata
 - ✅ **Modern Web Framework**: Migrated to Fiber v2 for improved performance and developer experience
+- ✅ **Graceful Shutdown**: Signal handling with connection draining and resource cleanup
+- ✅ **Health Check Endpoints**: Kubernetes-ready liveness and readiness probes
+- ✅ **Interface Conformance**: RoutableModule interface pattern with compile-time verification
 
 ### Key Characteristics
 
@@ -95,14 +98,14 @@ The system implements clean architecture with four distinct layers:
 - **Purpose**: HTTP request/response handling
 - **Components**: Fiber handlers, request/response structs, validation
 - **Dependencies**: Use cases only
-- **Key Files**: `login.go`, `register.go`
+- **Key Files**: `login.go`
 
 #### 2. Use Case Layer (`modules/*/usecases/`)
 
 - **Purpose**: Business logic and domain rules
 - **Components**: Business logic, domain validation, orchestration
 - **Dependencies**: Repository interfaces only
-- **Key Files**: `login.go`, `register.go`
+- **Key Files**: `login.go`
 
 #### 3. Repository Layer (`db/repositories/`)
 
@@ -267,8 +270,7 @@ returning *;
 #### Public Endpoints (Unprotected)
 
 ```
-POST /login      - User authentication
-POST /register   - User registration
+POST /auth/login      - User authentication
 ```
 
 #### Protected Endpoints (JWT Required)
@@ -465,14 +467,28 @@ Current role hierarchy:
 
 The system has been restructured around a modular architecture pattern where each feature domain is self-contained with its own module definition.
 
+### RoutableModule Interface
+
+All modules implement the `RoutableModule` interface for consistent route setup:
+
+```go
+// modules/routable.go
+type RoutableModule interface {
+    SetupRoutes(fiber *fiber.App, prefix string)
+}
+```
+
 ### Module Pattern
 
-Each module follows the same structure:
+Each module follows the same structure with interface conformance:
 
 ```go
 type ModuleName struct {
     // Dependencies (repositories, use cases, handlers)
 }
+
+// Compile time interface conformance check
+var _ modules.RoutableModule = (*ModuleName)(nil)
 
 func NewModule(pool *pgxpool.Pool) *ModuleName {
     // Initialize dependencies
@@ -480,8 +496,8 @@ func NewModule(pool *pgxpool.Pool) *ModuleName {
     // Return configured module
 }
 
-func (m *ModuleName) SetupRoutes(fiberApp *fiber.App) {
-    // Define route groups
+func (m *ModuleName) SetupRoutes(fiberApp *fiber.App, prefix string) {
+    // Define route groups with prefix
     // Apply middleware
     // Register handlers
 }
@@ -492,33 +508,31 @@ func (m *ModuleName) SetupRoutes(fiberApp *fiber.App) {
 ```
 modules/auth/
 ├── handlers/
-│   ├── login.go          # POST /login endpoint
-│   └── register.go       # POST /register endpoint
+│   └── login.go          # POST /auth/login endpoint
 └── usecases/
-    ├── login.go          # Login business logic
-    └── register.go       # Registration business logic
+    └── login.go          # Login business logic
 ```
 
 #### Module Structure (`modules/auth/module.go`)
 
 ```go
 type AuthModule struct {
-    userRepository  repositories.UserRepository
-    loginUseCase    *usecases.LoginUseCase
-    loginHandler    *handlers.LoginHandler
-    registerUseCase *usecases.RegisterUseCase
-    registerHandler *handlers.RegisterHandler
+    userRepository repositories.UserRepository
+    loginUseCase   *usecases.LoginUseCase
+    loginHandler   *handlers.LoginHandler
 }
+
+// Compile time interface conformance check
+var _ modules.RoutableModule = (*AuthModule)(nil)
 
 func NewModule(pool *pgxpool.Pool) *AuthModule {
     // Wire up all dependencies
     return &AuthModule{...}
 }
 
-func (m *AuthModule) SetupRoutes(fiberApp *fiber.App) {
-    authRoutes := fiberApp.Group("/auth")
+func (m *AuthModule) SetupRoutes(fiberApp *fiber.App, prefix string) {
+    authRoutes := fiberApp.Group(prefix)
     authRoutes.Post("/login", m.loginHandler.HandleLogin)
-    authRoutes.Post("/register", m.registerHandler.HandleRegister)
 }
 ```
 
@@ -554,7 +568,7 @@ func (u *LoginUseCase) Login(ctx context.Context, email, password string) (strin
 
 ### Academic Module (`modules/academic/`)
 
-**Status**: ✅ Fully implemented with course enrollment + complete course offering management
+**Status**: ✅ Fully implemented with course enrollment + complete course offering management + interface conformance
 
 **Current Structure**:
 
@@ -688,21 +702,51 @@ func (c DatabaseConfigParams) DSN() string {
 
 ```go
 app := fiber.New()
-
-// Public routes
-app.Post("/login", loginHandler.HandleLogin)
-app.Post("/register", registerHandler.HandleRegister)
-
-// Protected routes with middleware chain
-academicGroup := app.Group("/academic")
-academicGroup.Use(middlewares.JWT())
-academicGroup.Post(
-    "/course-offering/:id/enroll",
-    enrollmentHandler.HandleCourseEnrollment,
-    middlewares.ShouldBeAccessedByRoles([]constants.RoleType{constants.RoleStudent}),
+app.Use(
+    cors.New(),
+    helmet.New(),
+    recover.New(),
+    logger.New(),
+    healthcheck.New(healthcheck.Config{
+        LivenessEndpoint:  "/live",
+        ReadinessEndpoint: "/ready",
+    }),
 )
 
-log.Fatal().Err(app.Listen(":8880")).Msg("Failed to start server")
+// Modular route setup
+routePrefixToModuleMapping := map[string]modules.RoutableModule{
+    "/auth":     auth.NewModule(pool),
+    "/academic": academic.NewModule(pool),
+}
+
+for pfx, module := range routePrefixToModuleMapping {
+    module.SetupRoutes(app, pfx)
+}
+
+// Graceful shutdown implementation
+go func() {
+    log.Info().Str("address", config.CurrentConfig.App.Addr).Msg("Starting server")
+    if err := app.Listen(config.CurrentConfig.App.Addr); err != nil {
+        log.Error().Err(err).Msg("Server failed to start or stopped")
+    }
+}()
+
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+<-quit
+log.Info().Msg("Graceful shutdown initiated...")
+
+shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer shutdownCancel()
+
+if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+    log.Error().Err(err).Msg("Server forced to shutdown")
+} else {
+    log.Info().Msg("Server shutdown gracefully")
+}
+
+pool.Close()
 ```
 
 **Features**:
@@ -934,15 +978,23 @@ siakad-poc/
 │       ├── users.sql
 │       └── academic.sql
 ├── modules/                 # Feature modules
+│   ├── routable.go          # RoutableModule interface definition
 │   ├── auth/                # Authentication module
+│   │   ├── module.go        # Module with interface conformance
 │   │   ├── handlers/
+│   │   │   └── login.go
 │   │   └── usecases/
+│   │       └── login.go
 │   └── academic/            # Academic management module
+│       ├── module.go        # Module with interface conformance
 │       ├── handlers/
-│       │   └── course_enrollment.go
+│       │   ├── course_enrollment.go
+│       │   └── course_offering.go
 │       └── usecases/
 │           ├── course_enrollment.go
-│           └── course_enrollment_test.go
+│           ├── course_enrollment_test.go
+│           ├── course_offering.go
+│           └── course_offering_test.go
 ├── docs/                    # Documentation
 │   └── academic/
 │       └── course-enrollment.md
