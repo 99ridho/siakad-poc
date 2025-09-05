@@ -1,0 +1,1 @@
+This directory is used to store configuration needed (e.g. systemd-enabled services definitions, config files) which needs to be copied to the deployment target server.
