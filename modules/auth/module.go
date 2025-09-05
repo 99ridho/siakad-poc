@@ -35,8 +35,8 @@ func NewModule(pool *pgxpool.Pool) *AuthModule {
 	}
 }
 
-func (m *AuthModule) SetupRoutes(fiberApp *fiber.App) {
-	authRoutes := fiberApp.Group("/auth")
+func (m *AuthModule) SetupRoutes(fiberApp *fiber.App, prefix string) {
+	authRoutes := fiberApp.Group(prefix)
 	authRoutes.Post("/login", m.loginHandler.HandleLogin)
 	authRoutes.Post("/register", m.registerHandler.HandleRegister)
 }

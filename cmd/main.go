@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"siakad-poc/config"
+	"siakad-poc/modules"
 	"siakad-poc/modules/academic"
 	"siakad-poc/modules/auth"
 
@@ -33,6 +34,11 @@ func main() {
 		log.Fatal().Err(err).Msg("cannot create database pool")
 	}
 
+	routePrefixToModuleMapping := map[string]modules.RoutableModule{
+		"/auth":     auth.NewModule(pool),
+		"/academic": academic.NewModule(pool),
+	}
+
 	app := fiber.New()
 	app.Use(
 		cors.New(),
@@ -45,11 +51,9 @@ func main() {
 		}),
 	)
 
-	authModule := auth.NewModule(pool)
-	academicModule := academic.NewModule(pool)
-
-	authModule.SetupRoutes(app)
-	academicModule.SetupRoutes(app)
+	for pfx, module := range routePrefixToModuleMapping {
+		module.SetupRoutes(app, pfx)
+	}
 
 	log.Fatal().Err(app.Listen(config.CurrentConfig.App.Addr)).Msg("Failed to start server")
 }

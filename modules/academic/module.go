@@ -37,8 +37,8 @@ func NewModule(pool *pgxpool.Pool) *AcademicModule {
 	}
 }
 
-func (m *AcademicModule) SetupRoutes(fiberApp *fiber.App) {
-	academicGroup := fiberApp.Group("/academic")
+func (m *AcademicModule) SetupRoutes(fiberApp *fiber.App, prefix string) {
+	academicGroup := fiberApp.Group(prefix)
 	academicGroup.Use(middlewares.JWT())
 	academicGroup.Post(
 		"/course-offering/:id/enroll",
