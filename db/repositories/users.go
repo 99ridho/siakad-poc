@@ -21,6 +21,9 @@ type DefaultUserRepository struct {
 	pool  *pgxpool.Pool
 }
 
+// Compile time interface conformance check
+var _ UserRepository = (*DefaultUserRepository)(nil)
+
 func NewDefaultUserRepository(pool *pgxpool.Pool) *DefaultUserRepository {
 	return &DefaultUserRepository{
 		query: generated.New(pool),

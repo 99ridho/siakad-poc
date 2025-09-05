@@ -4,6 +4,7 @@ import (
 	"siakad-poc/constants"
 	"siakad-poc/db/repositories"
 	"siakad-poc/middlewares"
+	"siakad-poc/modules"
 	"siakad-poc/modules/academic/handlers"
 	"siakad-poc/modules/academic/usecases"
 
@@ -18,6 +19,9 @@ type AcademicModule struct {
 	courseOfferingHandler   *handlers.CourseOfferingHandler
 	courseEnrollmentHandler *handlers.CourseEnrollmentHandler
 }
+
+// Compile time interface conformance check
+var _ modules.RoutableModule = (*AcademicModule)(nil)
 
 func NewModule(pool *pgxpool.Pool) *AcademicModule {
 	academicRepository := repositories.NewDefaultAcademicRepository(pool)

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"siakad-poc/db/repositories"
+	"siakad-poc/modules"
 	"siakad-poc/modules/auth/handlers"
 	"siakad-poc/modules/auth/usecases"
 
@@ -16,6 +17,9 @@ type AuthModule struct {
 	registerUseCase *usecases.RegisterUseCase
 	registerHandler *handlers.RegisterHandler
 }
+
+// Compile time interface conformance check
+var _ modules.RoutableModule = (*AuthModule)(nil)
 
 func NewModule(pool *pgxpool.Pool) *AuthModule {
 	usersRepository := repositories.NewDefaultUserRepository(pool)

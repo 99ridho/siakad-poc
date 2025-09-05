@@ -39,7 +39,7 @@ type AcademicRepository interface {
 	CountCourseOfferingEnrollments(ctx context.Context, courseOfferingID string) (int64, error)
 	CheckEnrollmentExists(ctx context.Context, studentID, courseOfferingID string) (bool, error)
 	CreateEnrollment(ctx context.Context, studentID, courseOfferingID string) (generated.CourseRegistration, error)
-	
+
 	// Course Offering CRUD operations
 	GetCourseOfferingsWithPagination(ctx context.Context, limit, offset int) ([]CourseOfferingWithCourse, error)
 	CountCourseOfferings(ctx context.Context) (int64, error)
@@ -53,6 +53,9 @@ type DefaultAcademicRepository struct {
 	query *generated.Queries
 	pool  *pgxpool.Pool
 }
+
+// Compile time interface conformance check
+var _ AcademicRepository = (*DefaultAcademicRepository)(nil)
 
 func NewDefaultAcademicRepository(pool *pgxpool.Pool) *DefaultAcademicRepository {
 	return &DefaultAcademicRepository{
@@ -195,12 +198,12 @@ func (r *DefaultAcademicRepository) GetCourseOfferingsWithPagination(ctx context
 		Limit:  int32(limit),
 		Offset: int32(offset),
 	}
-	
+
 	rows, err := r.query.GetCourseOfferingsWithPagination(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var courseOfferings []CourseOfferingWithCourse
 	for _, row := range rows {
 		courseOfferings = append(courseOfferings, CourseOfferingWithCourse{
@@ -215,7 +218,7 @@ func (r *DefaultAcademicRepository) GetCourseOfferingsWithPagination(ctx context
 			Credit:                  row.Credit,
 		})
 	}
-	
+
 	return courseOfferings, nil
 }
 
