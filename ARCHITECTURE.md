@@ -7,7 +7,7 @@
 3. [Database Architecture](#database-architecture)
 4. [API Design & Standards](#api-design--standards)
 5. [Authentication System](#authentication-system)
-6. [Module Structure](#module-structure)
+6. [Module Structure](#modular-architecture-pattern)
 7. [Infrastructure & Configuration](#infrastructure--configuration)
 8. [Development Workflow](#development-workflow)
 9. [Technology Stack](#technology-stack)
@@ -57,37 +57,37 @@ The system implements clean architecture with four distinct layers:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    PRESENTATION LAYER                       │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │   HTTP Handler  │  │   Validation    │                  │
-│  │   (Fiber v2)    │  │  (validator)    │                  │
-│  └─────────────────┘  └─────────────────┘                  │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │   HTTP Handler  │  │   Validation    │                   │
+│  │   (Fiber v2)    │  │  (validator)    │                   │
+│  └─────────────────┘  └─────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    USE CASE LAYER                           │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │  Business Logic │  │   Domain Rules  │                  │
-│  │   (Use Cases)   │  │   (Validation)  │                  │
-│  └─────────────────┘  └─────────────────┘                  │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │  Business Logic │  │   Domain Rules  │                   │
+│  │   (Use Cases)   │  │   (Validation)  │                   │
+│  └─────────────────┘  └─────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  REPOSITORY LAYER                           │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │   Interface     │  │   Implementation│                  │
-│  │  (Abstraction)  │  │    (Concrete)   │                  │
-│  └─────────────────┘  └─────────────────┘                  │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │   Interface     │  │   Implementation│                   │
+│  │  (Abstraction)  │  │    (Concrete)   │                   │
+│  └─────────────────┘  └─────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   DATABASE LAYER                            │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │      SQLC       │  │   PostgreSQL    │                  │
-│  │  (Generated)    │  │     (pgx/v5)    │                  │
-│  └─────────────────┘  └─────────────────┘                  │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │      SQLC       │  │   PostgreSQL    │                   │
+│  │  (Generated)    │  │     (pgx/v5)    │                   │
+│  └─────────────────┘  └─────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,20 +123,78 @@ The system implements clean architecture with four distinct layers:
 
 ### Dependency Injection
 
-All dependencies are wired in `cmd/main.go`:
+The system uses a modular dependency injection pattern where each module handles its own internal wiring:
+
+#### Main Application (`cmd/main.go`)
 
 ```go
-// Repository layer
-usersRepository := repositories.NewDefaultUserRepository(pool)
+// Modular dependency injection - each module manages its own dependencies
+routePrefixToModuleMapping := map[string]modules.RoutableModule{
+    "/auth":     auth.NewModule(pool),     // Auth module handles login dependencies
+    "/academic": academic.NewModule(pool), // Academic module handles all academic dependencies
+}
 
-// Use case layer
-loginUseCase := usecases.NewLoginUseCase(usersRepository)
-registerUseCase := usecases.NewRegisterUseCase(usersRepository)
-
-// Presentation layer
-loginHandler := handlers.NewLoginHandler(loginUseCase)
-registerHandler := handlers.NewRegisterHandler(registerUseCase)
+// Setup routes per module
+for pfx, module := range routePrefixToModuleMapping {
+    module.SetupRoutes(app, pfx)
+}
 ```
+
+#### Module-Level Dependency Injection
+
+Each module's `NewModule()` constructor handles internal dependency wiring:
+
+**Auth Module Example (`modules/auth/module.go`):**
+```go
+func NewModule(pool *pgxpool.Pool) *AuthModule {
+    // Repository layer
+    usersRepository := repositories.NewDefaultUserRepository(pool)
+    
+    // Use case layer  
+    loginUseCase := usecases.NewLoginUseCase(usersRepository)
+    
+    // Presentation layer
+    loginHandler := handlers.NewLoginHandler(loginUseCase)
+    
+    return &AuthModule{
+        userRepository: usersRepository,
+        loginUseCase:   loginUseCase,
+        loginHandler:   loginHandler,
+    }
+}
+```
+
+**Academic Module Example (`modules/academic/module.go`):**
+```go
+func NewModule(pool *pgxpool.Pool) *AcademicModule {
+    // Repository layer
+    academicRepository := repositories.NewDefaultAcademicRepository(pool)
+    
+    // Use case layer
+    courseOfferingUseCase := usecases.NewCourseOfferingUseCase(academicRepository)
+    courseEnrollmentUseCase := usecases.NewCourseEnrollmentUseCase(academicRepository)
+    
+    // Presentation layer
+    courseOfferingHandler := handlers.NewCourseOfferingHandler(courseOfferingUseCase)
+    courseEnrollmentHandler := handlers.NewEnrollmentHandler(courseEnrollmentUseCase)
+    
+    return &AcademicModule{
+        academicRepository:      academicRepository,
+        courseOfferingUseCase:   courseOfferingUseCase,
+        courseEnrollmentUseCase: courseEnrollmentUseCase,
+        courseOfferingHandler:   courseOfferingHandler,
+        courseEnrollmentHandler: courseEnrollmentHandler,
+    }
+}
+```
+
+#### Benefits of Modular Dependency Injection
+
+- **Encapsulation**: Each module manages its own dependencies internally
+- **Scalability**: Adding new modules doesn't complicate main.go
+- **Consistency**: All modules follow the same RoutableModule interface
+- **Maintainability**: Dependencies are co-located with their domain logic
+- **Testability**: Modules can be tested in isolation with their dependencies
 
 ---
 
@@ -782,15 +840,18 @@ func init() {
 ```json
 {
   "database": {
-    "hostname": "localhost",
-    "database": "siakad",
-    "username": "user",
-    "password": "password",
+    "username": "testing",
+    "password": "asdqwe123",
+    "hostname": "127.0.0.1",
     "port": "5432",
+    "database": "siakad-poc",
     "schema": "public"
   },
   "jwt": {
-    "secret": "your-secret-key-here"
+    "secret": "0jLNuVtBil4t3X2y3FGG"
+  },
+  "app": {
+    "addr": ":8880"
   }
 }
 ```
@@ -1002,7 +1063,7 @@ siakad-poc/
 ├── sqlc.yml                 # SQLC configuration
 ├── go.mod                   # Go module definition
 ├── ARCHITECTURE.md          # System architecture documentation
-└── CLAUDE.md                # Development guidance
+└── CLAUDE.md                # Claude-assisted development guidance
 ```
 
 ---
@@ -1016,12 +1077,14 @@ The SIAKAD system has been successfully migrated from Echo v4 to Fiber v2, repre
 ### Migration Benefits
 
 **Performance Improvements:**
+
 - **Faster Routing**: Fiber v2 offers superior routing performance compared to Echo v4
 - **Lower Memory Usage**: Reduced memory footprint for better resource utilization
 - **Higher Throughput**: Improved request handling capacity under load
 - **Optimized JSON Processing**: More efficient request/response parsing
 
 **Developer Experience:**
+
 - **Express.js Familiarity**: API patterns similar to Express.js for easier adoption
 - **Rich Middleware Ecosystem**: Extensive built-in middleware collection
 - **Better Documentation**: Comprehensive guides and examples
@@ -1030,19 +1093,21 @@ The SIAKAD system has been successfully migrated from Echo v4 to Fiber v2, repre
 ### Technical Changes
 
 **API Patterns:**
+
 ```go
 // Before (Echo v4)
 e := echo.New()
 e.POST("/login", handler)
 func handler(c echo.Context) error
 
-// After (Fiber v2)  
+// After (Fiber v2)
 app := fiber.New()
 app.Post("/login", handler)
 func handler(c *fiber.Ctx) error
 ```
 
 **Request Handling:**
+
 - `c.Bind()` → `c.BodyParser()`
 - `c.Param()` → `c.Params()`
 - `c.QueryParam()` → `c.Query()`
@@ -1052,9 +1117,10 @@ func handler(c *fiber.Ctx) error
 ### Preserved Architecture
 
 **✅ Unchanged Components:**
+
 - Clean Architecture layers and separation of concerns
 - Business logic and domain rules
-- Database operations and SQLC integration  
+- Database operations and SQLC integration
 - JWT authentication and authorization mechanisms
 - Request validation and error handling patterns
 - Testing frameworks and strategies
@@ -1064,6 +1130,7 @@ func handler(c *fiber.Ctx) error
 ### Future-Proofing
 
 The migration to Fiber v2 positions the system for:
+
 - **Better Scaling**: Improved performance characteristics for production loads
 - **Modern Patterns**: Alignment with current Go web development best practices
 - **Community Support**: Access to actively maintained ecosystem
