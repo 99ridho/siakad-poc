@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 var CurrentConfig Config
@@ -42,6 +43,13 @@ type Config struct {
 	Database DatabaseConfigParams `json:"database"`
 	JWT      JWTConfigParams      `json:"jwt"`
 	App      AppConfigParams      `json:"app"`
+}
+
+func init() {
+	err := LoadConfig()
+	if err != nil {
+		log.Fatal().Err(err).Msg("cannot load config")
+	}
 }
 
 func LoadConfig() error {

@@ -25,11 +25,6 @@ import (
 
 func init() {
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
-
-	err := config.LoadConfig()
-	if err != nil {
-		log.Fatal().Err(err).Msg("cannot load config")
-	}
 }
 
 func main() {
