@@ -6,12 +6,13 @@
 2. [Clean Architecture Implementation](#clean-architecture-implementation)
 3. [Database Architecture](#database-architecture)
 4. [API Design & Standards](#api-design--standards)
-5. [Authentication System](#authentication-system)
-6. [Module Structure](#modular-architecture-pattern)
-7. [Infrastructure & Configuration](#infrastructure--configuration)
-8. [Development Workflow](#development-workflow)
-9. [Technology Stack](#technology-stack)
-10. [Future Considerations](#future-considerations)
+5. [Transaction Management](#transaction-management)
+6. [Authentication System](#authentication-system)
+7. [Module Structure](#modular-architecture-pattern)
+8. [Infrastructure & Configuration](#infrastructure--configuration)
+9. [Development Workflow](#development-workflow)
+10. [Technology Stack](#technology-stack)
+11. [Future Considerations](#future-considerations)
 
 ---
 
@@ -146,17 +147,18 @@ for pfx, module := range routePrefixToModuleMapping {
 Each module's `NewModule()` constructor handles internal dependency wiring:
 
 **Auth Module Example (`modules/auth/module.go`):**
+
 ```go
 func NewModule(pool *pgxpool.Pool) *AuthModule {
     // Repository layer
     usersRepository := repositories.NewDefaultUserRepository(pool)
-    
-    // Use case layer  
+
+    // Use case layer
     loginUseCase := usecases.NewLoginUseCase(usersRepository)
-    
+
     // Presentation layer
     loginHandler := handlers.NewLoginHandler(loginUseCase)
-    
+
     return &AuthModule{
         userRepository: usersRepository,
         loginUseCase:   loginUseCase,
@@ -166,19 +168,20 @@ func NewModule(pool *pgxpool.Pool) *AuthModule {
 ```
 
 **Academic Module Example (`modules/academic/module.go`):**
+
 ```go
 func NewModule(pool *pgxpool.Pool) *AcademicModule {
     // Repository layer
     academicRepository := repositories.NewDefaultAcademicRepository(pool)
-    
+
     // Use case layer
     courseOfferingUseCase := usecases.NewCourseOfferingUseCase(academicRepository)
     courseEnrollmentUseCase := usecases.NewCourseEnrollmentUseCase(academicRepository)
-    
+
     // Presentation layer
     courseOfferingHandler := handlers.NewCourseOfferingHandler(courseOfferingUseCase)
     courseEnrollmentHandler := handlers.NewEnrollmentHandler(courseEnrollmentUseCase)
-    
+
     return &AcademicModule{
         academicRepository:      academicRepository,
         courseOfferingUseCase:   courseOfferingUseCase,
@@ -458,10 +461,10 @@ The transaction management follows a layered approach:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    USE CASE LAYER                           │
-│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  ┌─────────────────┐  ┌───────────────────┐                 │
 │  │CourseEnrollment │  │TransactionExecutor│                 │
-│  │    UseCase      │◄─┤   Interface     │                   │
-│  └─────────────────┘  └─────────────────┘                   │
+│  │    UseCase      │◄─┤   Interface       │                 │
+│  └─────────────────┘  └───────────────────┘                 │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -494,6 +497,7 @@ type TransactionExecutor interface {
 ```
 
 **Production Implementation:**
+
 ```go
 type PgxTransactionExecutor struct {
     pool *pgxpool.Pool
@@ -512,7 +516,7 @@ All repositories provide both standard and transaction-aware methods:
 type AcademicRepository interface {
     // Standard methods
     CheckEnrollmentExists(ctx context.Context, studentID, courseOfferingID string) (bool, error)
-    
+
     // Transaction-aware methods (Tx suffix)
     CheckEnrollmentExistsTx(txCtx *TxContext, studentID, courseOfferingID string) (bool, error)
 }
@@ -541,21 +545,25 @@ func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, 
 ### Benefits
 
 #### 1. **Data Consistency**
+
 - All reads within transaction see consistent snapshot
 - Prevents race conditions in enrollment validation
 - Capacity limits enforced correctly under concurrent load
 
 #### 2. **Atomicity**
+
 - Either all operations succeed or all fail
 - Automatic rollback on any error
 - No partial state changes in the database
 
 #### 3. **Testability**
+
 - Interface abstraction allows easy mocking
 - Unit tests use MockTransactionExecutor
 - Integration tests use real PgxTransactionExecutor
 
 #### 4. **Clean Architecture Compliance**
+
 - Business logic separated from transaction management
 - Dependency injection maintains layer separation
 - Repository interface abstracts database concerns
@@ -563,6 +571,7 @@ func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, 
 ### Testing Strategy
 
 #### Unit Testing
+
 ```go
 type MockTransactionExecutor struct {
     mock.Mock
@@ -576,12 +585,13 @@ func (m *MockTransactionExecutor) WithTxContext(ctx context.Context, fn func(*co
 ```
 
 #### Integration Testing
+
 ```go
 func TestTransactionRollback(t *testing.T) {
     testDB := setupTestDatabase(t)
     txExecutor := common.NewPgxTransactionExecutor(testDB)
     useCase := NewCourseEnrollmentUseCase(repo, txExecutor)
-    
+
     // Test actual transaction behavior with real database
 }
 ```
@@ -589,6 +599,7 @@ func TestTransactionRollback(t *testing.T) {
 ### Implementation Examples
 
 **Course Enrollment Transaction:**
+
 1. **Check enrollment exists** (consistent read)
 2. **Validate capacity** (consistent count)
 3. **Check schedule conflicts** (consistent student data)
