@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"errors"
+	"siakad-poc/common"
 	"siakad-poc/db/generated"
 	"siakad-poc/db/repositories"
 	"testing"
@@ -83,6 +84,32 @@ func (m *MockCourseOfferingRepository) DeleteCourseOffering(ctx context.Context,
 func (m *MockCourseOfferingRepository) GetCourseOfferingByIDWithDetails(ctx context.Context, id string) (repositories.CourseOfferingWithCourse, error) {
 	args := m.Called(ctx, id)
 	return args.Get(0).(repositories.CourseOfferingWithCourse), args.Error(1)
+}
+
+// Transaction-aware methods (required by interface)
+func (m *MockCourseOfferingRepository) GetCourseOfferingWithCourseTx(txCtx *common.TxContext, id string) (repositories.CourseOfferingWithCourse, error) {
+	args := m.Called(txCtx, id)
+	return args.Get(0).(repositories.CourseOfferingWithCourse), args.Error(1)
+}
+
+func (m *MockCourseOfferingRepository) GetStudentEnrollmentsWithDetailsTx(txCtx *common.TxContext, studentID string) ([]repositories.StudentEnrollmentWithDetails, error) {
+	args := m.Called(txCtx, studentID)
+	return args.Get(0).([]repositories.StudentEnrollmentWithDetails), args.Error(1)
+}
+
+func (m *MockCourseOfferingRepository) CountCourseOfferingEnrollmentsTx(txCtx *common.TxContext, courseOfferingID string) (int64, error) {
+	args := m.Called(txCtx, courseOfferingID)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockCourseOfferingRepository) CheckEnrollmentExistsTx(txCtx *common.TxContext, studentID, courseOfferingID string) (bool, error) {
+	args := m.Called(txCtx, studentID, courseOfferingID)
+	return args.Get(0).(bool), args.Error(1)
+}
+
+func (m *MockCourseOfferingRepository) CreateEnrollmentTx(txCtx *common.TxContext, studentID, courseOfferingID string) (generated.CourseRegistration, error) {
+	args := m.Called(txCtx, studentID, courseOfferingID)
+	return args.Get(0).(generated.CourseRegistration), args.Error(1)
 }
 
 // Test Suite

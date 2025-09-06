@@ -1,6 +1,7 @@
 package academic
 
 import (
+	"siakad-poc/common"
 	"siakad-poc/constants"
 	"siakad-poc/db/repositories"
 	"siakad-poc/middlewares"
@@ -24,10 +25,11 @@ type AcademicModule struct {
 var _ modules.RoutableModule = (*AcademicModule)(nil)
 
 func NewModule(pool *pgxpool.Pool) *AcademicModule {
+	txExecutor := common.NewPgxTransactionExecutor(pool)
 	academicRepository := repositories.NewDefaultAcademicRepository(pool)
 
 	courseOfferingUseCase := usecases.NewCourseOfferingUseCase(academicRepository)
-	courseEnrollmentUseCase := usecases.NewCourseEnrollmentUseCase(academicRepository)
+	courseEnrollmentUseCase := usecases.NewCourseEnrollmentUseCase(academicRepository, txExecutor)
 
 	courseOfferingHandler := handlers.NewCourseOfferingHandler(courseOfferingUseCase)
 	courseEnrollmentHandler := handlers.NewEnrollmentHandler(courseEnrollmentUseCase)

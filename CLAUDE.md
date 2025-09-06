@@ -12,7 +12,7 @@ The project follows clean architecture principles with clear separation of conce
 
 - **cmd/**: Application entry point and dependency injection
 - **config/**: Configuration management (JSON-based with PostgreSQL settings)
-- **common/**: Shared types and utilities (standardized API responses with generics)
+- **common/**: Shared types, utilities, and transaction management (standardized API responses with generics, TransactionExecutor interface)
 - **constants/**: System constants and role definitions
 - **middlewares/**: HTTP middleware for authentication and authorization
   - `jwt.go`: JWT token validation and user context injection with comprehensive logging
@@ -21,7 +21,7 @@ The project follows clean architecture principles with clear separation of conce
   - `migrations/`: SQL migration files using goose format
   - `sql/`: SQL query definitions for SQLC
   - `generated/`: SQLC-generated Go code (models, queries)
-  - `repositories/`: Repository pattern implementation
+  - `repositories/`: Repository pattern implementation with transaction support (dual interface pattern)
 - **modules/**: Feature modules organized by domain with modular architecture
   - `auth/`: Authentication module with self-contained architecture:
     - `module.go`: Module initialization and route setup
@@ -32,10 +32,10 @@ The project follows clean architecture principles with clear separation of conce
     - `module.go`: Module initialization and protected route setup
     - `handlers/`: Course enrollment and offering handlers
     - `usecases/`: Business validation and CRUD operations
-    - Course enrollment with advanced business validation
+    - Course enrollment with advanced business validation and transaction management
     - Course offering CRUD operations with pagination
     - Role-based endpoint access control
-    - Comprehensive test coverage
+    - Comprehensive test coverage with transaction testing patterns
 
 ## Key Technologies
 
@@ -47,6 +47,7 @@ The project follows clean architecture principles with clear separation of conce
 - **Testing**: Testify framework with assertion helpers, mocks, and organized test suites
 - **Security**: JWT authentication + role-based access control with Fiber middleware chaining
 - **Validation**: go-playground/validator/v10 with custom error formatting
+- **Transaction Management**: ACID transactions with dependency injection and comprehensive testing support
 
 ## Database Schema
 
@@ -57,7 +58,7 @@ The system models academic entities with proper relationships:
 - `courses` and `course_offerings` (course catalog and scheduled sections)
 - `course_registrations` (student enrollment tracking)
 
-All tables use UUID primary keys and include comprehensive audit fields (created_at, updated_at, deleted_at) with soft delete functionality.
+All tables use UUID primary keys and include comprehensive audit fields (created_at, updated_at, deleted_at) with soft delete functionality. Repository operations support both standard and transaction-aware methods for ACID compliance.
 
 ## Development Commands
 
@@ -215,11 +216,43 @@ Test patterns to follow:
 
 ### Repository Pattern
 
-Database access is abstracted through repository interfaces, making testing and mocking easier.
+Database access is abstracted through repository interfaces with dual method support:
+- **Standard methods**: Direct database operations for simple queries
+- **Transaction methods**: `Tx` suffix methods that accept `*common.TxContext` for ACID operations
+
+Example:
+```go
+type AcademicRepository interface {
+    CheckEnrollmentExists(ctx context.Context, studentID, courseOfferingID string) (bool, error)
+    CheckEnrollmentExistsTx(txCtx *common.TxContext, studentID, courseOfferingID string) (bool, error)
+}
+```
 
 ### Use Case Pattern
 
-Business logic is encapsulated in use case structs that depend on repository interfaces.
+Business logic is encapsulated in use case structs that depend on repository interfaces and TransactionExecutor for coordinating multi-step operations:
+
+```go
+type CourseEnrollmentUseCase struct {
+    academicRepo repositories.AcademicRepository
+    txExecutor   common.TransactionExecutor
+}
+
+func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, courseOfferingID string) error {
+    return u.txExecutor.WithTxContext(ctx, func(txCtx *common.TxContext) error {
+        // All repository operations share the same transaction
+        return nil
+    })
+}
+```
+
+### Transaction Pattern
+
+Complex operations are wrapped in transactions to ensure ACID properties:
+- **Interface Abstraction**: TransactionExecutor interface for dependency injection
+- **Consistent State**: All operations within transaction see the same data snapshot
+- **Automatic Rollback**: Any error triggers complete rollback
+- **Testing Support**: MockTransactionExecutor for unit tests
 
 ### Handler Pattern
 
@@ -256,18 +289,26 @@ var _ modules.RoutableModule = (*AcademicModule)(nil)
 
 ### Dependency Injection
 
-Dependencies are wired up in `cmd/main.go` following constructor injection pattern with modular route mapping:
+Dependencies are wired up in `cmd/main.go` following constructor injection pattern with modular route mapping. Transaction management uses the TransactionExecutor interface for clean separation and testability:
 
 ```go
 // Mapping HTTP route prefix to relevant module
 routePrefixToModuleMapping := map[string]modules.RoutableModule{
     "/auth":     auth.NewModule(pool),
-    "/academic": academic.NewModule(pool),
+    "/academic": academic.NewModule(pool), // Internally creates TransactionExecutor
 }
 
 // Setup routes per module
 for pfx, module := range routePrefixToModuleMapping {
     module.SetupRoutes(app, pfx)
+}
+
+// Transaction executor is wired within modules:
+func NewModule(pool *pgxpool.Pool) *AcademicModule {
+    txExecutor := common.NewPgxTransactionExecutor(pool)
+    academicRepository := repositories.NewDefaultAcademicRepository(pool)
+    courseEnrollmentUseCase := usecases.NewCourseEnrollmentUseCase(academicRepository, txExecutor)
+    // ...
 }
 ```
 
@@ -302,15 +343,20 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 
 - **Framework**: Testify with assertion helpers, test suites, and comprehensive mocking
 - **Test Locations**:
-  - `modules/academic/usecases/course_enrollment_test.go` - Enrollment system tests
+  - `modules/academic/usecases/course_enrollment_test.go` - Enrollment system with transaction tests
   - `modules/academic/usecases/course_offering_test.go` - Course offering CRUD tests
 - **Coverage**:
   - Business logic validation (enrollment rules, CRUD operations)
+  - Transaction behavior and ACID compliance
   - Error scenarios and edge cases
-  - Repository interaction patterns
+  - Repository interaction patterns (both standard and transaction methods)
   - Helper function testing (time calculations, UUID conversion)
-- **Mocking Strategy**: Repository interface mocks using testify/mock
+- **Mocking Strategy**: 
+  - Repository interface mocks using testify/mock with `Tx` method variants
+  - MockTransactionExecutor for unit testing transaction logic
+  - Full pgx.Tx interface mocks for comprehensive transaction testing
 - **Test Organization**: Structured test suites with setup/teardown methods and grouped test cases
+- **Transaction Testing**: Separate unit tests (mocked) from integration tests (real transactions)
 
 ### Running Tests
 
@@ -329,23 +375,39 @@ go test -v ./modules/academic/usecases/
 
 **Course Enrollment Tests:**
 
-- Business logic validation (duplicate prevention, capacity limits)
+- Business logic validation (duplicate prevention, capacity limits) within transactions
 - Schedule conflict detection with time overlap calculations
-- Error scenarios (repository failures, invalid data)
+- Transaction rollback scenarios and error handling
 - Helper function testing (time calculations, conflict detection)
+- ACID compliance verification (consistency, atomicity)
 
 **Course Offering CRUD Tests:**
 
 - CRUD operation validation (create, read, update, delete)
 - Pagination logic testing
 - UUID handling and conversion testing
-- Repository interaction patterns
+- Repository interaction patterns (standard methods)
 
 **Mock Strategy:**
 
-- Repository interface mocks with expected method calls and returns
+- Repository interface mocks with both standard and `Tx` method expectations
+- MockTransactionExecutor bypasses actual transactions for unit tests
 - Context-aware testing with proper error propagation
+- Transaction context mocks (`*common.TxContext`) for consistent testing
 - Test data factories for consistent test setup
+
+**Transaction Testing Patterns:**
+
+```go
+// Unit test with mocked transaction
+mockRepo := &MockAcademicRepository{}
+mockTxExecutor := &MockTransactionExecutor{}
+mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), studentID, courseID).Return(false, nil)
+
+// Integration test with real transaction
+txExecutor := common.NewPgxTransactionExecutor(testDB)
+useCase := NewCourseEnrollmentUseCase(repo, txExecutor)
+```
 
 ## Production Readiness Assessment
 
@@ -409,8 +471,9 @@ The system has been successfully migrated from Echo v4 to Fiber v2, maintaining 
 2. Implement comprehensive logging using the established patterns
 3. Add role-based access control using middleware chaining
 4. Include pagination for list endpoints
-5. Write comprehensive unit tests with mocks
+5. Write comprehensive unit tests with transaction mocks and integration tests
 6. Follow the UUID handling patterns in repositories
+7. Use TransactionExecutor interface for multi-step operations requiring ACID properties
 
 **API Development Standards:**
 

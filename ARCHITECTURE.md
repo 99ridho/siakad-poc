@@ -34,6 +34,7 @@
 - ✅ **Graceful Shutdown**: Signal handling with connection draining and resource cleanup
 - ✅ **Health Check Endpoints**: Kubernetes-ready liveness and readiness probes
 - ✅ **Interface Conformance**: RoutableModule interface pattern with compile-time verification
+- ✅ **Transaction Management**: Comprehensive ACID transaction support with dependency injection pattern
 
 ### Key Characteristics
 
@@ -441,6 +442,159 @@ type PaginationMetadata struct {
     TotalPages   int `json:"total_pages"`
 }
 ```
+
+---
+
+## Transaction Management
+
+### Overview
+
+The SIAKAD system implements comprehensive ACID transaction management to ensure data consistency across multi-step database operations. The transaction system uses dependency injection with interface abstractions to maintain testability while providing production-grade reliability.
+
+### Architecture Pattern
+
+The transaction management follows a layered approach:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    USE CASE LAYER                           │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │CourseEnrollment │  │TransactionExecutor│                 │
+│  │    UseCase      │◄─┤   Interface     │                   │
+│  └─────────────────┘  └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   TRANSACTION LAYER                         │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │PgxTransactionEx │  │  TxContext      │                   │
+│  │    ecutor       │  │  (Wrapper)      │                   │
+│  └─────────────────┘  └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   REPOSITORY LAYER                          │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │  Standard       │  │  Transaction    │                   │
+│  │  Methods        │  │  Methods (Tx)   │                   │
+│  └─────────────────┘  └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Core Components
+
+#### 1. TransactionExecutor Interface (`common/transaction.go`)
+
+```go
+type TransactionExecutor interface {
+    WithTxContext(ctx context.Context, fn func(*TxContext) error) error
+}
+```
+
+**Production Implementation:**
+```go
+type PgxTransactionExecutor struct {
+    pool *pgxpool.Pool
+}
+
+func (p *PgxTransactionExecutor) WithTxContext(ctx context.Context, fn func(*TxContext) error) error {
+    return WithTxContext(ctx, p.pool, fn)
+}
+```
+
+#### 2. Repository Dual Interface Pattern
+
+All repositories provide both standard and transaction-aware methods:
+
+```go
+type AcademicRepository interface {
+    // Standard methods
+    CheckEnrollmentExists(ctx context.Context, studentID, courseOfferingID string) (bool, error)
+    
+    // Transaction-aware methods (Tx suffix)
+    CheckEnrollmentExistsTx(txCtx *TxContext, studentID, courseOfferingID string) (bool, error)
+}
+```
+
+#### 3. Use Case Integration
+
+Use cases coordinate transactions through dependency injection:
+
+```go
+type CourseEnrollmentUseCase struct {
+    academicRepo repositories.AcademicRepository
+    txExecutor   common.TransactionExecutor
+}
+
+func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, courseOfferingID string) error {
+    return u.txExecutor.WithTxContext(ctx, func(txCtx *common.TxContext) error {
+        // All repository operations within this block share the same transaction
+        exists, err := u.academicRepo.CheckEnrollmentExistsTx(txCtx, studentID, courseOfferingID)
+        // ... additional operations
+        return err
+    })
+}
+```
+
+### Benefits
+
+#### 1. **Data Consistency**
+- All reads within transaction see consistent snapshot
+- Prevents race conditions in enrollment validation
+- Capacity limits enforced correctly under concurrent load
+
+#### 2. **Atomicity**
+- Either all operations succeed or all fail
+- Automatic rollback on any error
+- No partial state changes in the database
+
+#### 3. **Testability**
+- Interface abstraction allows easy mocking
+- Unit tests use MockTransactionExecutor
+- Integration tests use real PgxTransactionExecutor
+
+#### 4. **Clean Architecture Compliance**
+- Business logic separated from transaction management
+- Dependency injection maintains layer separation
+- Repository interface abstracts database concerns
+
+### Testing Strategy
+
+#### Unit Testing
+```go
+type MockTransactionExecutor struct {
+    mock.Mock
+}
+
+func (m *MockTransactionExecutor) WithTxContext(ctx context.Context, fn func(*common.TxContext) error) error {
+    // Execute function directly without transaction overhead
+    mockTxCtx := &common.TxContext{}
+    return fn(mockTxCtx)
+}
+```
+
+#### Integration Testing
+```go
+func TestTransactionRollback(t *testing.T) {
+    testDB := setupTestDatabase(t)
+    txExecutor := common.NewPgxTransactionExecutor(testDB)
+    useCase := NewCourseEnrollmentUseCase(repo, txExecutor)
+    
+    // Test actual transaction behavior with real database
+}
+```
+
+### Implementation Examples
+
+**Course Enrollment Transaction:**
+1. **Check enrollment exists** (consistent read)
+2. **Validate capacity** (consistent count)
+3. **Check schedule conflicts** (consistent student data)
+4. **Create enrollment** (atomic write)
+
+All operations share the same transaction, ensuring no concurrent enrollments can violate capacity or create conflicts.
 
 ---
 
@@ -987,7 +1141,7 @@ go mod verify
 
 - **PostgreSQL**: Primary database
 - **pgx/v5** (`github.com/jackc/pgx/v5`): PostgreSQL driver with connection pooling
-- **SQLC**: Type-safe SQL query generator
+- **SQLC**: Type-safe SQL query generator with transaction support
 
 #### Authentication & Security
 
@@ -1008,6 +1162,7 @@ go mod verify
 #### Testing
 
 - **Testify** (`github.com/stretchr/testify`): Testing framework with assertions and mocks
+- **Transaction Testing**: MockTransactionExecutor for unit tests, integration testing patterns
 
 ### Directory Structure
 

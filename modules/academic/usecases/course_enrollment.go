@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"siakad-poc/common"
 	"siakad-poc/db/repositories"
 	"time"
 
@@ -13,75 +14,80 @@ import (
 
 type CourseEnrollmentUseCase struct {
 	academicRepo repositories.AcademicRepository
+	txExecutor   common.TransactionExecutor
 }
 
-func NewCourseEnrollmentUseCase(academicRepo repositories.AcademicRepository) *CourseEnrollmentUseCase {
+func NewCourseEnrollmentUseCase(academicRepo repositories.AcademicRepository, txExecutor common.TransactionExecutor) *CourseEnrollmentUseCase {
 	return &CourseEnrollmentUseCase{
 		academicRepo: academicRepo,
+		txExecutor:   txExecutor,
 	}
 }
 
 func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, courseOfferingID string) error {
-	// 1. Check if student is already enrolled in this course offering
-	exists, err := u.academicRepo.CheckEnrollmentExists(ctx, studentID, courseOfferingID)
-	if err != nil {
-		return errors.Wrap(err, "failed to check enrollment existence")
-	}
-	if exists {
-		return errors.New("student is already enrolled in this course offering")
-	}
-
-	// 2. Get course offering with course details (needed for capacity and schedule validation)
-	courseOfferingWithCourse, err := u.academicRepo.GetCourseOfferingWithCourse(ctx, courseOfferingID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errors.New("course offering not found")
-		}
-		return errors.Wrap(err, "failed to get course offering details")
-	}
-
-	// 3. Check capacity - ensure enrollment count is less than capacity
-	currentEnrollmentCount, err := u.academicRepo.CountCourseOfferingEnrollments(ctx, courseOfferingID)
-	if err != nil {
-		return errors.Wrap(err, "failed to count current enrollments")
-	}
-	if currentEnrollmentCount >= int64(courseOfferingWithCourse.Capacity) {
-		return errors.New("course offering is at full capacity")
-	}
-
-	// 4. Check for schedule overlaps with student's existing enrollments
-	existingEnrollments, err := u.academicRepo.GetStudentEnrollmentsWithDetails(ctx, studentID)
-	if err != nil {
-		return errors.Wrap(err, "failed to get student's existing enrollments")
-	}
-
-	// Calculate the time range for the new course offering
-	newCourseStartTime, err := convertPgTimestamp(courseOfferingWithCourse.CourseOfferingStartTime)
-	if err != nil {
-		return errors.Wrap(err, "failed to parse new course start time")
-	}
-	newCourseEndTime := calculateCourseEndTime(newCourseStartTime, courseOfferingWithCourse.Credit)
-
-	// Check for overlaps with existing enrollments
-	for _, enrollment := range existingEnrollments {
-		existingStartTime, err := convertPgTimestamp(enrollment.CourseOfferingStartTime)
+	// Execute all enrollment operations within a transaction to ensure consistency
+	return u.txExecutor.WithTxContext(ctx, func(txCtx *common.TxContext) error {
+		// 1. Check if student is already enrolled in this course offering (with transaction)
+		exists, err := u.academicRepo.CheckEnrollmentExistsTx(txCtx, studentID, courseOfferingID)
 		if err != nil {
-			return errors.Wrap(err, "failed to parse existing course start time")
+			return errors.Wrap(err, "failed to check enrollment existence")
 		}
-		existingEndTime := calculateCourseEndTime(existingStartTime, enrollment.Credit)
-
-		if hasTimeOverlap(newCourseStartTime, newCourseEndTime, existingStartTime, existingEndTime) {
-			return fmt.Errorf("schedule conflict: new course overlaps with existing enrollment")
+		if exists {
+			return errors.New("student is already enrolled in this course offering")
 		}
-	}
 
-	// 5. Create the enrollment if all validations pass
-	_, err = u.academicRepo.CreateEnrollment(ctx, studentID, courseOfferingID)
-	if err != nil {
-		return errors.Wrap(err, "failed to create enrollment")
-	}
+		// 2. Get course offering with course details (with transaction for consistent read)
+		courseOfferingWithCourse, err := u.academicRepo.GetCourseOfferingWithCourseTx(txCtx, courseOfferingID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errors.New("course offering not found")
+			}
+			return errors.Wrap(err, "failed to get course offering details")
+		}
 
-	return nil
+		// 3. Check capacity - ensure enrollment count is less than capacity (with transaction for consistent read)
+		currentEnrollmentCount, err := u.academicRepo.CountCourseOfferingEnrollmentsTx(txCtx, courseOfferingID)
+		if err != nil {
+			return errors.Wrap(err, "failed to count current enrollments")
+		}
+		if currentEnrollmentCount >= int64(courseOfferingWithCourse.Capacity) {
+			return errors.New("course offering is at full capacity")
+		}
+
+		// 4. Check for schedule overlaps with student's existing enrollments (with transaction)
+		existingEnrollments, err := u.academicRepo.GetStudentEnrollmentsWithDetailsTx(txCtx, studentID)
+		if err != nil {
+			return errors.Wrap(err, "failed to get student's existing enrollments")
+		}
+
+		// Calculate the time range for the new course offering
+		newCourseStartTime, err := convertPgTimestamp(courseOfferingWithCourse.CourseOfferingStartTime)
+		if err != nil {
+			return errors.Wrap(err, "failed to parse new course start time")
+		}
+		newCourseEndTime := calculateCourseEndTime(newCourseStartTime, courseOfferingWithCourse.Credit)
+
+		// Check for overlaps with existing enrollments
+		for _, enrollment := range existingEnrollments {
+			existingStartTime, err := convertPgTimestamp(enrollment.CourseOfferingStartTime)
+			if err != nil {
+				return errors.Wrap(err, "failed to parse existing course start time")
+			}
+			existingEndTime := calculateCourseEndTime(existingStartTime, enrollment.Credit)
+
+			if hasTimeOverlap(newCourseStartTime, newCourseEndTime, existingStartTime, existingEndTime) {
+				return fmt.Errorf("schedule conflict: new course overlaps with existing enrollment")
+			}
+		}
+
+		// 5. Create the enrollment if all validations pass (with transaction)
+		_, err = u.academicRepo.CreateEnrollmentTx(txCtx, studentID, courseOfferingID)
+		if err != nil {
+			return errors.Wrap(err, "failed to create enrollment")
+		}
+
+		return nil
+	})
 }
 
 // Helper function to calculate course end time based on credits

@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"errors"
+	"siakad-poc/common"
 	"siakad-poc/db/generated"
 	"siakad-poc/db/repositories"
 	"testing"
@@ -86,19 +87,52 @@ func (m *MockAcademicRepository) GetCourseOfferingByIDWithDetails(ctx context.Co
 	return args.Get(0).(repositories.CourseOfferingWithCourse), args.Error(1)
 }
 
+// Transaction-aware methods (required by interface)
+func (m *MockAcademicRepository) GetCourseOfferingWithCourseTx(txCtx *common.TxContext, id string) (repositories.CourseOfferingWithCourse, error) {
+	args := m.Called(txCtx, id)
+	return args.Get(0).(repositories.CourseOfferingWithCourse), args.Error(1)
+}
+
+func (m *MockAcademicRepository) GetStudentEnrollmentsWithDetailsTx(txCtx *common.TxContext, studentID string) ([]repositories.StudentEnrollmentWithDetails, error) {
+	args := m.Called(txCtx, studentID)
+	return args.Get(0).([]repositories.StudentEnrollmentWithDetails), args.Error(1)
+}
+
+func (m *MockAcademicRepository) CountCourseOfferingEnrollmentsTx(txCtx *common.TxContext, courseOfferingID string) (int64, error) {
+	args := m.Called(txCtx, courseOfferingID)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockAcademicRepository) CheckEnrollmentExistsTx(txCtx *common.TxContext, studentID, courseOfferingID string) (bool, error) {
+	args := m.Called(txCtx, studentID, courseOfferingID)
+	return args.Get(0).(bool), args.Error(1)
+}
+
+func (m *MockAcademicRepository) CreateEnrollmentTx(txCtx *common.TxContext, studentID, courseOfferingID string) (generated.CourseRegistration, error) {
+	args := m.Called(txCtx, studentID, courseOfferingID)
+	return args.Get(0).(generated.CourseRegistration), args.Error(1)
+}
+
 // Test Suite
 type EnrollmentUseCaseTestSuite struct {
 	suite.Suite
-	useCase   *CourseEnrollmentUseCase
-	mockRepo  *MockAcademicRepository
-	ctx       context.Context
-	studentID string
-	courseID  string
+	useCase        *CourseEnrollmentUseCase
+	mockRepo       *MockAcademicRepository
+	mockTxExecutor *common.MockTransactionExecutor
+	ctx            context.Context
+	studentID      string
+	courseID       string
 }
 
 func (suite *EnrollmentUseCaseTestSuite) SetupTest() {
 	suite.mockRepo = new(MockAcademicRepository)
-	suite.useCase = NewCourseEnrollmentUseCase(suite.mockRepo)
+	suite.mockTxExecutor = new(common.MockTransactionExecutor)
+
+	suite.useCase = &CourseEnrollmentUseCase{
+		academicRepo: suite.mockRepo,
+		txExecutor:   suite.mockTxExecutor,
+	}
+
 	suite.ctx = context.Background()
 	suite.studentID = "550e8400-e29b-41d4-a716-446655440001"
 	suite.courseID = "550e8400-e29b-41d4-a716-446655440002"
@@ -120,12 +154,12 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_Success() {
 		Credit: 3,
 	}
 
-	// Mock expectations
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
-	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(courseOfferingWithCourse, nil)
-	suite.mockRepo.On("CountCourseOfferingEnrollments", suite.ctx, suite.courseID).Return(int64(10), nil)
-	suite.mockRepo.On("GetStudentEnrollmentsWithDetails", suite.ctx, suite.studentID).Return([]repositories.StudentEnrollmentWithDetails{}, nil)
-	suite.mockRepo.On("CreateEnrollment", suite.ctx, suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
+	// Mock expectations for transaction methods
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(10), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return([]repositories.StudentEnrollmentWithDetails{}, nil)
+	suite.mockRepo.On("CreateEnrollmentTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
 
 	// Execute
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
@@ -137,7 +171,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_Success() {
 // Test duplicate enrollment
 func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_DuplicateEnrollment() {
 	// Mock expectations
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(true, nil)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(true, nil)
 
 	// Execute
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
@@ -150,8 +184,8 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_DuplicateEnrollment()
 // Test course offering not found
 func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CourseOfferingNotFound() {
 	// Mock expectations
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
-	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(repositories.CourseOfferingWithCourse{}, pgx.ErrNoRows)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(repositories.CourseOfferingWithCourse{}, pgx.ErrNoRows)
 
 	// Execute
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
@@ -174,9 +208,9 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CapacityFull() {
 	}
 
 	// Mock expectations
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
-	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(courseOfferingWithCourse, nil)
-	suite.mockRepo.On("CountCourseOfferingEnrollments", suite.ctx, suite.courseID).Return(int64(10), nil)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(10), nil)
 
 	// Execute
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
@@ -210,10 +244,10 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_ScheduleOverlap() {
 	}
 
 	// Mock expectations
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
-	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(courseOfferingWithCourse, nil)
-	suite.mockRepo.On("CountCourseOfferingEnrollments", suite.ctx, suite.courseID).Return(int64(10), nil)
-	suite.mockRepo.On("GetStudentEnrollmentsWithDetails", suite.ctx, suite.studentID).Return(existingEnrollments, nil)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(10), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return(existingEnrollments, nil)
 
 	// Execute
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
@@ -247,11 +281,11 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_NoScheduleOverlap() {
 	}
 
 	// Mock expectations
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
-	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(courseOfferingWithCourse, nil)
-	suite.mockRepo.On("CountCourseOfferingEnrollments", suite.ctx, suite.courseID).Return(int64(10), nil)
-	suite.mockRepo.On("GetStudentEnrollmentsWithDetails", suite.ctx, suite.studentID).Return(existingEnrollments, nil)
-	suite.mockRepo.On("CreateEnrollment", suite.ctx, suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(10), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return(existingEnrollments, nil)
+	suite.mockRepo.On("CreateEnrollmentTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
 
 	// Execute
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
@@ -263,7 +297,7 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_NoScheduleOverlap() {
 // Test repository error scenarios
 func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_RepositoryErrors() {
 	// Test CheckEnrollmentExists error
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, errors.New("db error"))
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, errors.New("db error"))
 
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 	assert.Error(suite.T(), err)
@@ -274,8 +308,8 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_RepositoryErrors() {
 	suite.mockRepo.Calls = nil
 
 	// Test GetCourseOfferingWithCourse error
-	suite.mockRepo.On("CheckEnrollmentExists", suite.ctx, suite.studentID, suite.courseID).Return(false, nil)
-	suite.mockRepo.On("GetCourseOfferingWithCourse", suite.ctx, suite.courseID).Return(repositories.CourseOfferingWithCourse{}, errors.New("db error"))
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(repositories.CourseOfferingWithCourse{}, errors.New("db error"))
 
 	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 	assert.Error(suite.T(), err)

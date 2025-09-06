@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"siakad-poc/common"
 	"siakad-poc/db/generated"
 	"time"
 
@@ -47,6 +48,13 @@ type AcademicRepository interface {
 	UpdateCourseOffering(ctx context.Context, id, semesterID, courseID, sectionCode string, capacity int32, startTime time.Time) (generated.CourseOffering, error)
 	DeleteCourseOffering(ctx context.Context, id string) (generated.CourseOffering, error)
 	GetCourseOfferingByIDWithDetails(ctx context.Context, id string) (CourseOfferingWithCourse, error)
+
+	// Transaction-aware methods - these methods accept a TxContext for use within transactions
+	GetCourseOfferingWithCourseTx(txCtx *common.TxContext, id string) (CourseOfferingWithCourse, error)
+	GetStudentEnrollmentsWithDetailsTx(txCtx *common.TxContext, studentID string) ([]StudentEnrollmentWithDetails, error)
+	CountCourseOfferingEnrollmentsTx(txCtx *common.TxContext, courseOfferingID string) (int64, error)
+	CheckEnrollmentExistsTx(txCtx *common.TxContext, studentID, courseOfferingID string) (bool, error)
+	CreateEnrollmentTx(txCtx *common.TxContext, studentID, courseOfferingID string) (generated.CourseRegistration, error)
 }
 
 type DefaultAcademicRepository struct {
@@ -318,4 +326,112 @@ func (r *DefaultAcademicRepository) GetCourseOfferingByIDWithDetails(ctx context
 		CourseName:              row.CourseName,
 		Credit:                  row.Credit,
 	}, nil
+}
+
+// Transaction-aware methods implementation
+
+func (r *DefaultAcademicRepository) GetCourseOfferingWithCourseTx(txCtx *common.TxContext, id string) (CourseOfferingWithCourse, error) {
+	var uuidID pgtype.UUID
+	err := uuidID.Scan(id)
+	if err != nil {
+		return CourseOfferingWithCourse{}, errors.New("can't parse course offering id as uuid")
+	}
+
+	// Create a new Queries instance using the transaction
+	txQueries := r.query.WithTx(txCtx.Tx())
+	row, err := txQueries.GetCourseOfferingWithCourse(txCtx.Context(), uuidID)
+	if err != nil {
+		return CourseOfferingWithCourse{}, err
+	}
+
+	return CourseOfferingWithCourse{
+		CourseOfferingID:        row.CourseOfferingID,
+		SemesterID:              row.SemesterID,
+		CourseID:                row.CourseID,
+		SectionCode:             row.SectionCode,
+		Capacity:                row.Capacity,
+		CourseOfferingStartTime: row.CourseOfferingStartTime,
+		CourseCode:              row.CourseCode,
+		CourseName:              row.CourseName,
+		Credit:                  row.Credit,
+	}, nil
+}
+
+func (r *DefaultAcademicRepository) GetStudentEnrollmentsWithDetailsTx(txCtx *common.TxContext, studentID string) ([]StudentEnrollmentWithDetails, error) {
+	var uuidID pgtype.UUID
+	err := uuidID.Scan(studentID)
+	if err != nil {
+		return nil, errors.New("can't parse student id as uuid")
+	}
+
+	txQueries := r.query.WithTx(txCtx.Tx())
+	rows, err := txQueries.GetStudentEnrollmentsWithDetails(txCtx.Context(), uuidID)
+	if err != nil {
+		return nil, err
+	}
+
+	var enrollments []StudentEnrollmentWithDetails
+	for _, row := range rows {
+		enrollments = append(enrollments, StudentEnrollmentWithDetails{
+			RegistrationID:          row.RegistrationID,
+			StudentID:               row.StudentID,
+			CourseOfferingID:        row.CourseOfferingID,
+			RegistrationCreatedAt:   row.RegistrationCreatedAt,
+			CourseOfferingStartTime: row.CourseOfferingStartTime,
+			Credit:                  row.Credit,
+		})
+	}
+
+	return enrollments, nil
+}
+
+func (r *DefaultAcademicRepository) CountCourseOfferingEnrollmentsTx(txCtx *common.TxContext, courseOfferingID string) (int64, error) {
+	var uuidID pgtype.UUID
+	err := uuidID.Scan(courseOfferingID)
+	if err != nil {
+		return 0, errors.New("can't parse course offering id as uuid")
+	}
+
+	txQueries := r.query.WithTx(txCtx.Tx())
+	return txQueries.CountCourseOfferingEnrollments(txCtx.Context(), uuidID)
+}
+
+func (r *DefaultAcademicRepository) CheckEnrollmentExistsTx(txCtx *common.TxContext, studentID, courseOfferingID string) (bool, error) {
+	var studentUUID, courseOfferingUUID pgtype.UUID
+	err := studentUUID.Scan(studentID)
+	if err != nil {
+		return false, errors.New("can't parse student id as uuid")
+	}
+	err = courseOfferingUUID.Scan(courseOfferingID)
+	if err != nil {
+		return false, errors.New("can't parse course offering id as uuid")
+	}
+
+	params := generated.CheckEnrollmentExistsParams{
+		StudentID:        studentUUID,
+		CourseOfferingID: courseOfferingUUID,
+	}
+
+	txQueries := r.query.WithTx(txCtx.Tx())
+	return txQueries.CheckEnrollmentExists(txCtx.Context(), params)
+}
+
+func (r *DefaultAcademicRepository) CreateEnrollmentTx(txCtx *common.TxContext, studentID, courseOfferingID string) (generated.CourseRegistration, error) {
+	var studentUUID, courseOfferingUUID pgtype.UUID
+	err := studentUUID.Scan(studentID)
+	if err != nil {
+		return generated.CourseRegistration{}, errors.New("can't parse student id as uuid")
+	}
+	err = courseOfferingUUID.Scan(courseOfferingID)
+	if err != nil {
+		return generated.CourseRegistration{}, errors.New("can't parse course offering id as uuid")
+	}
+
+	params := generated.CreateEnrollmentParams{
+		StudentID:        studentUUID,
+		CourseOfferingID: courseOfferingUUID,
+	}
+
+	txQueries := r.query.WithTx(txCtx.Tx())
+	return txQueries.CreateEnrollment(txCtx.Context(), params)
 }
