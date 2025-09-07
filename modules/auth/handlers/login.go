@@ -34,8 +34,8 @@ func (h *LoginHandler) HandleLogin(c *fiber.Ctx) error {
 	err := c.BodyParser(&loginRequest)
 	if err != nil {
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("path", c.OriginalURL()).
@@ -77,8 +77,8 @@ func (h *LoginHandler) HandleLogin(c *fiber.Ctx) error {
 	token, err := h.usecase.Login(c.Context(), loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("email", loginRequest.Email).

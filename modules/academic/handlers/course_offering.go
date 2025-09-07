@@ -45,8 +45,8 @@ func (h *CourseOfferingHandler) HandleListCourseOfferings(c *fiber.Ctx) error {
 	courseOfferings, pagination, err := h.useCase.GetCourseOfferingsWithPagination(c.Context(), page, pageSize)
 	if err != nil {
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Int("page", page).
@@ -82,8 +82,8 @@ func (h *CourseOfferingHandler) HandleCreateCourseOffering(c *fiber.Ctx) error {
 	var req usecases.CreateCourseOfferingRequest
 	if err := c.BodyParser(&req); err != nil {
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("path", c.OriginalURL()).
@@ -127,8 +127,8 @@ func (h *CourseOfferingHandler) HandleCreateCourseOffering(c *fiber.Ctx) error {
 	response, err := h.useCase.CreateCourseOffering(c.Context(), req)
 	if err != nil {
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("course_id", req.CourseID).
@@ -182,8 +182,8 @@ func (h *CourseOfferingHandler) HandleUpdateCourseOffering(c *fiber.Ctx) error {
 	var req usecases.UpdateCourseOfferingRequest
 	if err := c.BodyParser(&req); err != nil {
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("course_offering_id", id).
@@ -248,8 +248,8 @@ func (h *CourseOfferingHandler) HandleUpdateCourseOffering(c *fiber.Ctx) error {
 		}
 
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("course_offering_id", id).
@@ -323,8 +323,8 @@ func (h *CourseOfferingHandler) HandleDeleteCourseOffering(c *fiber.Ctx) error {
 		}
 
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("course_offering_id", id).

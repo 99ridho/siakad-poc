@@ -99,8 +99,8 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c *fiber.Ctx) error {
 
 		// Log the enrollment failure with context
 		log.Error().
-			Err(err).
 			Stack().
+			Err(err).
 			Str("request_id", requestID).
 			Str("client_ip", clientIP).
 			Str("student_id", studentID).
