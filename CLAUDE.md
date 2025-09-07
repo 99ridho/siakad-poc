@@ -10,24 +10,24 @@ This is a SIAKAD (Student Information Academic System) built in Go following cle
 
 The project follows clean architecture principles with clear separation of concerns:
 
-- **cmd/**: Application entry point and dependency injection
-- **config/**: Configuration management (JSON-based with PostgreSQL settings)
-- **common/**: Shared types, utilities, and transaction management (standardized API responses with generics, TransactionExecutor interface)
-- **constants/**: System constants and role definitions
-- **middlewares/**: HTTP middleware for authentication and authorization
+- **`cmd/`**: Application entry point and dependency injection
+- **`config/`**: Configuration management (JSON-based with PostgreSQL settings)
+- **`common/`**: Shared types, utilities, and transaction management (standardized API responses with generics, TransactionExecutor interface)
+- **`constants/`**: System constants and role definitions
+- **`middlewares/`**: HTTP middleware for authentication and authorization
   - `jwt.go`: JWT token validation and user context injection with comprehensive logging
   - `access_control.go`: Role-based access control enforcement with middleware chaining
-- **db/**: Database layer with SQLC-generated code
+- **`db/`**: Database layer with SQLC-generated code
   - `migrations/`: SQL migration files using goose format
   - `sql/`: SQL query definitions for SQLC
   - `generated/`: SQLC-generated Go code (models, queries)
   - `repositories/`: Repository pattern implementation with transaction support (dual interface pattern)
-- **modules/**: Feature modules organized by domain with modular architecture
+- **`modules/`**: Feature modules organized by domain with modular architecture
+  - `routable.go`: RoutableModule interface definition for consistent module pattern
   - `auth/`: Authentication module with self-contained architecture:
     - `module.go`: Module initialization and route setup
     - `handlers/`: Request/response handling (login only)
     - `usecases/`: Business logic and domain rules
-    - `routable.go`: RoutableModule interface definition for consistent module pattern
   - `academic/`: Complete academic management system with modular design:
     - `module.go`: Module initialization and protected route setup
     - `handlers/`: Course enrollment and offering handlers
@@ -69,6 +69,7 @@ go run cmd/main.go
 ```
 
 The server starts on port 8880 by default with the following production features:
+
 - Health check endpoints: `/live` (liveness) and `/ready` (readiness)
 - CORS enabled for cross-origin requests
 - Security headers via Helmet middleware
@@ -128,6 +129,7 @@ app.Use(
 ```
 
 **Middleware Features:**
+
 - **CORS**: Configurable cross-origin resource sharing
 - **Helmet**: Security headers (XSS protection, content type sniffing, etc.)
 - **Recovery**: Automatic panic recovery with graceful error responses
@@ -158,6 +160,7 @@ pool.Close()
 ```
 
 **Graceful Shutdown Features:**
+
 - **Signal Handling**: Responds to SIGINT (Ctrl+C) and SIGTERM signals
 - **Connection Draining**: 30-second timeout for active requests to complete
 - **Resource Cleanup**: Proper database connection pool closure
@@ -217,10 +220,12 @@ Test patterns to follow:
 ### Repository Pattern
 
 Database access is abstracted through repository interfaces with dual method support:
+
 - **Standard methods**: Direct database operations for simple queries
 - **Transaction methods**: `Tx` suffix methods that accept `*common.TxContext` for ACID operations
 
 Example:
+
 ```go
 type AcademicRepository interface {
     CheckEnrollmentExists(ctx context.Context, studentID, courseOfferingID string) (bool, error)
@@ -249,6 +254,7 @@ func (u *CourseEnrollmentUseCase) EnrollStudent(ctx context.Context, studentID, 
 ### Transaction Pattern
 
 Complex operations are wrapped in transactions to ensure ACID properties:
+
 - **Interface Abstraction**: TransactionExecutor interface for dependency injection
 - **Consistent State**: All operations within transaction see the same data snapshot
 - **Automatic Rollback**: Any error triggers complete rollback
@@ -282,6 +288,7 @@ var _ modules.RoutableModule = (*AcademicModule)(nil)
 ```
 
 **Benefits:**
+
 - **Consistency**: Uniform route setup pattern across all modules
 - **Type Safety**: Compile-time interface conformance verification
 - **Modularity**: Clean separation of routing concerns per domain
@@ -326,11 +333,13 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 - JWT-protected routes requiring `Authorization: Bearer <token>` header
 
 ### Public Endpoints
+
 - `POST /auth/login` - User authentication
 - `GET /live` - Liveness probe for Kubernetes
 - `GET /ready` - Readiness probe for Kubernetes
 
 ### Protected Academic Endpoints
+
 - `GET /academic/course-offerings` - List course offerings (Admin/Coordinator only)
 - `POST /academic/course-offering` - Create course offering (Admin/Coordinator only)
 - `PUT /academic/course-offering/:id` - Update course offering (Admin/Coordinator only)
@@ -351,7 +360,7 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
   - Error scenarios and edge cases
   - Repository interaction patterns (both standard and transaction methods)
   - Helper function testing (time calculations, UUID conversion)
-- **Mocking Strategy**: 
+- **Mocking Strategy**:
   - Repository interface mocks using testify/mock with `Tx` method variants
   - MockTransactionExecutor for unit testing transaction logic
   - Full pgx.Tx interface mocks for comprehensive transaction testing
@@ -442,6 +451,7 @@ This system demonstrates **advanced POC patterns** that can be refined for produ
 The system has been successfully migrated from Echo v4 to Fiber v2, maintaining all existing functionality while improving performance and developer experience:
 
 **Migration Benefits:**
+
 - **Performance**: Fiber v2 offers significantly better performance than Echo v4
 - **Express.js-like API**: More familiar patterns for developers from Node.js background
 - **Built-in Features**: Rich set of built-in middleware and utilities
@@ -449,6 +459,7 @@ The system has been successfully migrated from Echo v4 to Fiber v2, maintaining 
 - **Memory Efficiency**: Lower memory footprint and faster request processing
 
 **Key Changes:**
+
 - **Server Setup**: `echo.New()` → `fiber.New()`
 - **Route Methods**: `app.POST()` → `app.Post()`, `app.GET()` → `app.Get()`
 - **Handler Signatures**: `func(c echo.Context) error` → `func(c *fiber.Ctx) error`
@@ -456,6 +467,7 @@ The system has been successfully migrated from Echo v4 to Fiber v2, maintaining 
 - **Response Methods**: `c.JSON()` → `c.Status().JSON()`, `c.RealIP()` → `c.IP()`
 
 **What Remained Unchanged:**
+
 - ✅ Clean architecture and business logic
 - ✅ Database operations and SQLC integration
 - ✅ JWT authentication and authorization
@@ -465,9 +477,9 @@ The system has been successfully migrated from Echo v4 to Fiber v2, maintaining 
 
 ### Development Guidance for Production
 
-**Extending Academic Features:**
+**Building New Features:**
 
-1. Follow existing patterns in `modules/academic/` for new features
+1. Follow existing patterns (e.g. in `modules/academic/`)
 2. Implement comprehensive logging using the established patterns
 3. Add role-based access control using middleware chaining
 4. Include pagination for list endpoints

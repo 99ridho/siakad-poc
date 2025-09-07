@@ -1320,7 +1320,7 @@ The migration to Fiber v2 positions the system for:
 - **Middleware**: CORS, rate limiting
 - **Testing**: Comprehensive test suite
 - **API Documentation**: OpenAPI/Swagger integration
-- **Monitoring**: Health checks and metrics
+- **Monitoring**: Instrumentation metrics
 - **CI/CD**: Automated deployment pipeline
 
 ### Scalability Considerations
@@ -1353,10 +1353,9 @@ The migration to Fiber v2 positions the system for:
 
 **Infrastructure & Operations:**
 
-1. **No Health Checks**: Service monitoring and readiness probes needed
-2. **No Metrics Collection**: Application metrics and monitoring integration
-3. **Limited Configuration**: Environment-based configuration management
-4. **No Rate Limiting**: API protection and throttling mechanisms
+1. **No Metrics Collection**: Application metrics and monitoring integration
+2. **Limited Configuration**: Environment-based configuration management
+3. **No Rate Limiting**: API protection and throttling mechanisms
 
 **Security & Compliance:**
 
