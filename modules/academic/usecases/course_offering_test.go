@@ -222,7 +222,7 @@ func (suite *CourseOfferingUseCaseTestSuite) TestGetCourseOfferingsWithPaginatio
 	results, pagination, err := suite.useCase.GetCourseOfferingsWithPagination(suite.ctx, page, pageSize)
 
 	assert.Error(suite.T(), err)
-	assert.Equal(suite.T(), expectedError, err)
+	assert.Contains(suite.T(), err.Error(), "database connection error")
 	assert.Nil(suite.T(), results)
 	assert.Nil(suite.T(), pagination)
 }
@@ -265,7 +265,7 @@ func (suite *CourseOfferingUseCaseTestSuite) TestCreateCourseOffering_Repository
 	response, err := suite.useCase.CreateCourseOffering(suite.ctx, req)
 
 	assert.Error(suite.T(), err)
-	assert.Equal(suite.T(), expectedError, err)
+	assert.Contains(suite.T(), err.Error(), "duplicate key violation")
 	assert.Empty(suite.T(), response.ID)
 }
 

@@ -2,12 +2,13 @@ package usecases
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"siakad-poc/common"
 	"siakad-poc/db/repositories"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -64,12 +65,12 @@ func (uc *CourseOfferingUseCase) GetCourseOfferingsWithPagination(ctx context.Co
 
 	courseOfferings, err := uc.repo.GetCourseOfferingsWithPagination(ctx, pageSize, offset)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "cannot get course offerings")
 	}
 
 	totalRecords, err := uc.repo.CountCourseOfferings(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "cannot count course offerings")
 	}
 
 	var responses []CourseOfferingResponse
@@ -104,7 +105,7 @@ func (uc *CourseOfferingUseCase) GetCourseOfferingsWithPagination(ctx context.Co
 func (uc *CourseOfferingUseCase) CreateCourseOffering(ctx context.Context, req CreateCourseOfferingRequest) (CourseOfferingIDResponse, error) {
 	courseOffering, err := uc.repo.CreateCourseOffering(ctx, req.SemesterID, req.CourseID, req.SectionCode, req.Capacity, req.StartTime)
 	if err != nil {
-		return CourseOfferingIDResponse{}, err
+		return CourseOfferingIDResponse{}, errors.Wrap(err, "cannot create course offering")
 	}
 
 	return CourseOfferingIDResponse{
@@ -118,7 +119,7 @@ func (uc *CourseOfferingUseCase) UpdateCourseOffering(ctx context.Context, id st
 		if errors.Is(err, pgx.ErrNoRows) {
 			return CourseOfferingIDResponse{}, errors.New("course offering not found")
 		}
-		return CourseOfferingIDResponse{}, err
+		return CourseOfferingIDResponse{}, errors.Wrap(err, "cannot update course offering")
 	}
 
 	return CourseOfferingIDResponse{
@@ -132,7 +133,7 @@ func (uc *CourseOfferingUseCase) DeleteCourseOffering(ctx context.Context, id st
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errors.New("course offering not found")
 		}
-		return err
+		return errors.Wrap(err, "cannot delete course offering")
 	}
 	return nil
 }
