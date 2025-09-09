@@ -15,7 +15,11 @@ type CourseEnrollmentHandler struct {
 }
 
 type EnrollmentResponseData struct {
-	Message string `json:"message"`
+	Message           string    `json:"message"`
+	StudentID         string    `json:"student_id"`
+	CourseOfferingID  string    `json:"course_offering_id"`
+	EnrollmentTime    time.Time `json:"enrollment_time"`
+	Status            string    `json:"status"`
 }
 
 func NewEnrollmentHandler(enrollmentUseCase *usecases.CourseEnrollmentUseCase) *CourseEnrollmentHandler {
@@ -94,11 +98,58 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c *fiber.Ctx) error {
 	// Call use case to enroll student
 	err := h.enrollmentUseCase.EnrollStudent(c.Context(), studentID, courseOfferingID)
 	if err != nil {
-		// Determine appropriate HTTP status code based on error type
+		// Determine appropriate HTTP status code and user-friendly message based on error type
 		statusCode := fiber.StatusBadRequest
+		userMessage := "Enrollment failed"
+		errorDetails := []string{err.Error()}
 
-		// Log the enrollment failure with context
-		log.Error().
+		// Handle domain-specific errors with better UX
+		if enrollmentErr, ok := err.(*usecases.EnrollmentError); ok {
+			switch enrollmentErr.Type {
+			case usecases.ErrDuplicateEnrollment:
+				statusCode = fiber.StatusConflict
+				userMessage = "You are already enrolled in this course"
+				errorDetails = []string{"Duplicate enrollment detected. You cannot enroll in the same course offering twice."}
+
+			case usecases.ErrCapacityExceeded:
+				statusCode = fiber.StatusConflict
+				userMessage = "Course is full"
+				errorDetails = []string{"This course offering has reached its maximum capacity. Please try a different section or contact the academic office."}
+
+			case usecases.ErrScheduleConflict:
+				statusCode = fiber.StatusConflict
+				userMessage = "Schedule conflict detected"
+				errorDetails = []string{"The selected course conflicts with your existing class schedule. Please choose a different time slot."}
+
+			case usecases.ErrCourseOfferingNotFound:
+				statusCode = fiber.StatusNotFound
+				userMessage = "Course offering not found"
+				errorDetails = []string{"The requested course offering does not exist or may have been cancelled."}
+
+			case usecases.ErrInvalidCourseData:
+				statusCode = fiber.StatusBadRequest
+				userMessage = "Invalid course information"
+				errorDetails = []string{"There is an issue with the course offering data. Please contact the academic office."}
+
+			case usecases.ErrDatabaseOperation:
+				statusCode = fiber.StatusInternalServerError
+				userMessage = "System temporarily unavailable"
+				errorDetails = []string{"A technical issue occurred. Please try again later or contact support if the problem persists."}
+
+			case usecases.ErrTransactionFailed:
+				statusCode = fiber.StatusInternalServerError
+				userMessage = "Enrollment could not be processed"
+				errorDetails = []string{"A system error prevented enrollment completion. Please try again."}
+
+			default:
+				// Keep default values for unknown enrollment errors
+				userMessage = "Enrollment failed"
+				errorDetails = []string{enrollmentErr.Error()}
+			}
+		}
+
+		// Log the enrollment failure with structured context
+		logEvent := log.Error().
 			Stack().
 			Err(err).
 			Str("request_id", requestID).
@@ -106,27 +157,50 @@ func (h *CourseEnrollmentHandler) HandleCourseEnrollment(c *fiber.Ctx) error {
 			Str("student_id", studentID).
 			Str("course_offering_id", courseOfferingID).
 			Str("path", c.OriginalURL()).
-			Msg("Course enrollment failed")
+			Int("http_status", statusCode).
+			Str("user_message", userMessage)
 
-		// You could implement more sophisticated error type checking here
-		// For now, treating all business logic errors as bad request
+		// Add enrollment error details if available
+		if enrollmentErr, ok := err.(*usecases.EnrollmentError); ok {
+			logEvent = logEvent.
+				Str("error_type", string(enrollmentErr.Type)).
+				Interface("error_details", enrollmentErr.Details).
+				Bool("is_business_rule_violation", usecases.IsBusinessRuleViolation(err)).
+				Bool("is_system_error", usecases.IsSystemError(err))
+		}
+
+		logEvent.Msg("Course enrollment failed")
 
 		return c.Status(statusCode).JSON(common.BaseResponse[any]{
 			Status: common.StatusError,
 			Error: &common.BaseResponseError{
-				Message:   "Enrollment failed",
-				Details:   []string{err.Error()},
+				Message:   userMessage,
+				Details:   errorDetails,
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
 				Path:      c.OriginalURL(),
 			},
 		})
 	}
 
-	// Return success response
+	// Log successful enrollment
+	log.Info().
+		Str("request_id", requestID).
+		Str("client_ip", clientIP).
+		Str("student_id", studentID).
+		Str("course_offering_id", courseOfferingID).
+		Str("path", c.OriginalURL()).
+		Msg("Course enrollment successful")
+
+	// Return enhanced success response with enrollment details
+	enrollmentTime := time.Now().UTC()
 	return c.Status(fiber.StatusCreated).JSON(common.BaseResponse[EnrollmentResponseData]{
 		Status: common.StatusSuccess,
 		Data: &EnrollmentResponseData{
-			Message: "Successfully enrolled in course offering",
+			Message:          "Successfully enrolled in course offering",
+			StudentID:        studentID,
+			CourseOfferingID: courseOfferingID,
+			EnrollmentTime:   enrollmentTime,
+			Status:           "enrolled",
 		},
 	})
 }

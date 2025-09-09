@@ -178,7 +178,11 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_DuplicateEnrollment()
 
 	// Assert
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "already enrolled")
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok := GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrDuplicateEnrollment, errorType)
+	assert.True(suite.T(), IsBusinessRuleViolation(err))
 }
 
 // Test course offering not found
@@ -192,7 +196,11 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CourseOfferingNotFoun
 
 	// Assert
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "course offering not found")
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok := GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrCourseOfferingNotFound, errorType)
+	assert.True(suite.T(), IsDataValidationError(err))
 }
 
 // Test capacity full
@@ -217,7 +225,11 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CapacityFull() {
 
 	// Assert
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "full capacity")
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok := GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrCapacityExceeded, errorType)
+	assert.True(suite.T(), IsBusinessRuleViolation(err))
 }
 
 // Test schedule overlap
@@ -254,7 +266,11 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_ScheduleOverlap() {
 
 	// Assert
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "schedule conflict")
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok := GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrScheduleConflict, errorType)
+	assert.True(suite.T(), IsBusinessRuleViolation(err))
 }
 
 // Test no schedule overlap
@@ -301,7 +317,10 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_RepositoryErrors() {
 
 	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "failed to check enrollment existence")
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok := GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrDatabaseOperation, errorType)
 
 	// Reset mock for next test
 	suite.mockRepo.ExpectedCalls = nil
@@ -313,7 +332,221 @@ func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_RepositoryErrors() {
 
 	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "failed to get course offering details")
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok = GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrDatabaseOperation, errorType)
+}
+
+// Test data integrity validation
+func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_InvalidCourseOfferingData() {
+	// Test invalid capacity (zero)
+	courseOfferingWithInvalidCapacity := repositories.CourseOfferingWithCourse{
+		Capacity: 0, // Invalid capacity
+		CourseOfferingStartTime: pgtype.Timestamptz{
+			Time:  time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC),
+			Valid: true,
+		},
+		Credit: 3,
+	}
+
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithInvalidCapacity, nil)
+
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "capacity must be greater than 0")
+
+	// Reset mock for next test
+	suite.mockRepo.ExpectedCalls = nil
+	suite.mockRepo.Calls = nil
+
+	// Test invalid credit (zero)
+	courseOfferingWithInvalidCredit := repositories.CourseOfferingWithCourse{
+		Capacity: 30,
+		CourseOfferingStartTime: pgtype.Timestamptz{
+			Time:  time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC),
+			Valid: true,
+		},
+		Credit: 0, // Invalid credit
+	}
+
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithInvalidCredit, nil)
+
+	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "credit must be greater than 0")
+
+	// Reset mock for next test
+	suite.mockRepo.ExpectedCalls = nil
+	suite.mockRepo.Calls = nil
+
+	// Test invalid start time (NULL/invalid)
+	courseOfferingWithInvalidStartTime := repositories.CourseOfferingWithCourse{
+		Capacity: 30,
+		CourseOfferingStartTime: pgtype.Timestamptz{
+			Time:  time.Time{},
+			Valid: false, // Invalid start time
+		},
+		Credit: 3,
+	}
+
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithInvalidStartTime, nil)
+
+	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "start time is not set")
+}
+
+// Test boundary conditions for capacity
+func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CapacityBoundaryConditions() {
+	// Test exactly at capacity (last spot available)
+	courseOffering := repositories.CourseOfferingWithCourse{
+		Capacity: 10,
+		CourseOfferingStartTime: pgtype.Timestamptz{
+			Time:  time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC),
+			Valid: true,
+		},
+		Credit: 3,
+	}
+
+	// Mock for exactly one spot left (9 enrolled out of 10)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOffering, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(9), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return([]repositories.StudentEnrollmentWithDetails{}, nil)
+	suite.mockRepo.On("CreateEnrollmentTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
+
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.NoError(suite.T(), err)
+
+	// Reset mock for next test
+	suite.mockRepo.ExpectedCalls = nil
+	suite.mockRepo.Calls = nil
+
+	// Test exactly at full capacity (should fail)
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOffering, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(10), nil)
+
+	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "full capacity (10/10)")
+}
+
+// Test schedule overlap edge cases
+func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_ScheduleOverlapEdgeCases() {
+	// Test exact boundary case - courses that are adjacent but don't overlap
+	// New course: 9:00-11:30 (3 credits = 150 minutes)
+	// Existing course: 11:30-13:00 (2 credits = 100 minutes) - adjacent but no overlap
+	courseOfferingWithCourse := repositories.CourseOfferingWithCourse{
+		Capacity: 30,
+		CourseOfferingStartTime: pgtype.Timestamptz{
+			Time:  time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC),
+			Valid: true,
+		},
+		Credit: 3,
+	}
+
+	existingEnrollment := []repositories.StudentEnrollmentWithDetails{
+		{
+			CourseOfferingStartTime: pgtype.Timestamptz{
+				Time:  time.Date(2025, 1, 15, 11, 30, 0, 0, time.UTC), // Starts exactly when first course ends
+				Valid: true,
+			},
+			Credit: 2,
+		},
+	}
+
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(5), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return(existingEnrollment, nil)
+	suite.mockRepo.On("CreateEnrollmentTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
+
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.NoError(suite.T(), err) // Should succeed - no overlap
+
+	// Reset mock for next test
+	suite.mockRepo.ExpectedCalls = nil
+	suite.mockRepo.Calls = nil
+
+	// Test 1-minute overlap case (should fail)
+	// New course: 9:00-11:30 (3 credits = 150 minutes)
+	// Existing course: 11:29-12:19 (1 credit = 50 minutes) - 1 minute overlap
+	existingOverlapEnrollment := []repositories.StudentEnrollmentWithDetails{
+		{
+			CourseOfferingStartTime: pgtype.Timestamptz{
+				Time:  time.Date(2025, 1, 15, 11, 29, 0, 0, time.UTC), // Starts 1 minute before first course ends
+				Valid: true,
+			},
+			Credit: 1,
+		},
+	}
+
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(5), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return(existingOverlapEnrollment, nil)
+
+	err = suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.Error(suite.T(), err)
+	assert.True(suite.T(), IsEnrollmentError(err))
+	errorType, ok := GetEnrollmentErrorType(err)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), ErrScheduleConflict, errorType)
+}
+
+// Test handling of invalid existing enrollment data
+func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_InvalidExistingEnrollmentData() {
+	courseOfferingWithCourse := repositories.CourseOfferingWithCourse{
+		Capacity: 30,
+		CourseOfferingStartTime: pgtype.Timestamptz{
+			Time:  time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC),
+			Valid: true,
+		},
+		Credit: 3,
+	}
+
+	// Mix of valid and invalid existing enrollments - invalid ones should be skipped
+	existingEnrollments := []repositories.StudentEnrollmentWithDetails{
+		{
+			// Invalid enrollment - no valid start time
+			CourseOfferingStartTime: pgtype.Timestamptz{
+				Time:  time.Time{},
+				Valid: false,
+			},
+			Credit: 2,
+		},
+		{
+			// Invalid enrollment - zero credits
+			CourseOfferingStartTime: pgtype.Timestamptz{
+				Time:  time.Date(2025, 1, 15, 13, 0, 0, 0, time.UTC),
+				Valid: true,
+			},
+			Credit: 0,
+		},
+		{
+			// Valid enrollment - should not conflict
+			CourseOfferingStartTime: pgtype.Timestamptz{
+				Time:  time.Date(2025, 1, 15, 14, 0, 0, 0, time.UTC),
+				Valid: true,
+			},
+			Credit: 2,
+		},
+	}
+
+	suite.mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(false, nil)
+	suite.mockRepo.On("GetCourseOfferingWithCourseTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(courseOfferingWithCourse, nil)
+	suite.mockRepo.On("CountCourseOfferingEnrollmentsTx", mock.AnythingOfType("*common.TxContext"), suite.courseID).Return(int64(5), nil)
+	suite.mockRepo.On("GetStudentEnrollmentsWithDetailsTx", mock.AnythingOfType("*common.TxContext"), suite.studentID).Return(existingEnrollments, nil)
+	suite.mockRepo.On("CreateEnrollmentTx", mock.AnythingOfType("*common.TxContext"), suite.studentID, suite.courseID).Return(generated.CourseRegistration{}, nil)
+
+	err := suite.useCase.EnrollStudent(suite.ctx, suite.studentID, suite.courseID)
+	assert.NoError(suite.T(), err) // Should succeed - invalid enrollments are skipped
+
 }
 
 // Helper function tests
@@ -329,6 +562,19 @@ func TestCalculateCourseEndTime(t *testing.T) {
 	endTime = calculateCourseEndTime(startTime, 3)
 	expected = time.Date(2025, 1, 15, 11, 30, 0, 0, time.UTC)
 	assert.Equal(t, expected, endTime)
+
+	// Test edge case: 0 credits (should return start time unchanged)
+	endTime = calculateCourseEndTime(startTime, 0)
+	assert.Equal(t, startTime, endTime)
+
+	// Test edge case: negative credits (should return start time unchanged)
+	endTime = calculateCourseEndTime(startTime, -1)
+	assert.Equal(t, startTime, endTime)
+
+	// Test large credit value (6 credits = 300 minutes = 5 hours)
+	endTime = calculateCourseEndTime(startTime, 6)
+	expected = time.Date(2025, 1, 15, 14, 0, 0, 0, time.UTC)
+	assert.Equal(t, expected, endTime)
 }
 
 func TestHasTimeOverlap(t *testing.T) {
@@ -340,22 +586,57 @@ func TestHasTimeOverlap(t *testing.T) {
 	start2 := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
 	end2 := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 
-	// Test overlap
+	// Test partial overlap
 	assert.True(t, hasTimeOverlap(start1, end1, start2, end2))
 
-	// Course 3: 11:00-13:00 (no overlap with Course 1)
+	// Course 3: 11:00-13:00 (no overlap with Course 1 - adjacent)
 	start3 := time.Date(2025, 1, 15, 11, 0, 0, 0, time.UTC)
 	end3 := time.Date(2025, 1, 15, 13, 0, 0, 0, time.UTC)
 
-	// Test no overlap
+	// Test no overlap (adjacent)
 	assert.False(t, hasTimeOverlap(start1, end1, start3, end3))
 
 	// Course 4: 8:00-9:00 (adjacent to Course 1, no overlap)
 	start4 := time.Date(2025, 1, 15, 8, 0, 0, 0, time.UTC)
 	end4 := time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC)
 
-	// Test adjacent no overlap
+	// Test adjacent no overlap (before)
 	assert.False(t, hasTimeOverlap(start1, end1, start4, end4))
+
+	// Course 5: 9:30-10:30 (completely contained within Course 1)
+	start5 := time.Date(2025, 1, 15, 9, 30, 0, 0, time.UTC)
+	end5 := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
+
+	// Test complete containment
+	assert.True(t, hasTimeOverlap(start1, end1, start5, end5))
+
+	// Course 6: 8:00-12:00 (completely contains Course 1)
+	start6 := time.Date(2025, 1, 15, 8, 0, 0, 0, time.UTC)
+	end6 := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Test being completely contained
+	assert.True(t, hasTimeOverlap(start1, end1, start6, end6))
+
+	// Course 7: 10:59-12:00 (1-minute overlap)
+	start7 := time.Date(2025, 1, 15, 10, 59, 0, 0, time.UTC)
+	end7 := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Test 1-minute overlap
+	assert.True(t, hasTimeOverlap(start1, end1, start7, end7))
+
+	// Course 8: 12:00-14:00 (completely separate)
+	start8 := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	end8 := time.Date(2025, 1, 15, 14, 0, 0, 0, time.UTC)
+
+	// Test completely separate
+	assert.False(t, hasTimeOverlap(start1, end1, start8, end8))
+
+	// Course 9: 9:00-11:00 (exact same time)
+	start9 := time.Date(2025, 1, 15, 9, 0, 0, 0, time.UTC)
+	end9 := time.Date(2025, 1, 15, 11, 0, 0, 0, time.UTC)
+
+	// Test exact same time range
+	assert.True(t, hasTimeOverlap(start1, end1, start9, end9))
 }
 
 func TestConvertPgTimestamp(t *testing.T) {
@@ -370,7 +651,7 @@ func TestConvertPgTimestamp(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, validTime, result)
 
-	// Test invalid timestamp
+	// Test invalid timestamp (Valid = false)
 	invalidPgTime := pgtype.Timestamptz{
 		Time:  time.Time{},
 		Valid: false,
@@ -378,7 +659,28 @@ func TestConvertPgTimestamp(t *testing.T) {
 
 	_, err = convertPgTimestamp(invalidPgTime)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid timestamp")
+	assert.Contains(t, err.Error(), "Invalid timestamp: database field is NULL or invalid")
+
+	// Test edge case: valid timestamp with zero time
+	zeroTimePg := pgtype.Timestamptz{
+		Time:  time.Time{},
+		Valid: true, // Valid but zero time
+	}
+
+	result, err = convertPgTimestamp(zeroTimePg)
+	assert.NoError(t, err)
+	assert.Equal(t, time.Time{}, result)
+
+	// Test with timezone information
+	timeWithTZ := time.Date(2025, 1, 15, 9, 0, 0, 0, time.FixedZone("UTC+7", 7*60*60))
+	pgTimeWithTZ := pgtype.Timestamptz{
+		Time:  timeWithTZ,
+		Valid: true,
+	}
+
+	result, err = convertPgTimestamp(pgTimeWithTZ)
+	assert.NoError(t, err)
+	assert.Equal(t, timeWithTZ, result)
 }
 
 // Run the test suite
