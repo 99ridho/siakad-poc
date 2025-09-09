@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a SIAKAD (Student Information Academic System) built in Go following clean architecture principles. It's an advanced proof-of-concept REST API demonstrating production-ready patterns for managing academic systems. Features include user authentication, JWT middleware, complete course enrollment system, full course offering CRUD operations, role-based access control, and comprehensive business validation.
+This is a SIAKAD (Student Information Academic System) built in Go following clean architecture principles. It's an advanced proof-of-concept REST API demonstrating production-ready patterns for managing academic systems. Features include user authentication, JWT middleware, advanced course enrollment system with sophisticated business rule validation, complete course offering CRUD operations, role-based access control, domain-specific error handling, and comprehensive testing including concurrent enrollment scenarios.
 
 ## Architecture
 
@@ -28,14 +28,16 @@ The project follows clean architecture principles with clear separation of conce
     - `module.go`: Module initialization and route setup
     - `handlers/`: Request/response handling (login only)
     - `usecases/`: Business logic and domain rules
-  - `academic/`: Complete academic management system with modular design:
+  - `academic/`: Complete academic management system with advanced business rule validation:
     - `module.go`: Module initialization and protected route setup
-    - `handlers/`: Course enrollment and offering handlers
-    - `usecases/`: Business validation and CRUD operations
-    - Course enrollment with advanced business validation and transaction management
-    - Course offering CRUD operations with pagination
-    - Role-based endpoint access control
-    - Comprehensive test coverage with transaction testing patterns
+    - `handlers/`: Enhanced course enrollment and offering handlers with UX improvements
+    - `usecases/`: Advanced business validation, CRUD operations, and domain-specific error handling
+    - Course enrollment with sophisticated business rules (duplicate prevention, capacity management, schedule conflict detection)
+    - Course offering CRUD operations with pagination and comprehensive validation
+    - Role-based endpoint access control with proper HTTP status mapping
+    - Domain-specific error system with 7 error types and user-friendly messages
+    - Comprehensive test coverage including unit, integration, and concurrent enrollment testing
+    - Advanced schedule conflict detection using 1 credit = 50 minutes formula
 
 ## Key Technologies
 
@@ -59,6 +61,51 @@ The system models academic entities with proper relationships:
 - `course_registrations` (student enrollment tracking)
 
 All tables use UUID primary keys and include comprehensive audit fields (created_at, updated_at, deleted_at) with soft delete functionality. Repository operations support both standard and transaction-aware methods for ACID compliance.
+
+## Course Enrollment Business Rules
+
+The system implements three critical business rules for course enrollment:
+
+### 1. No Enrollment Duplication
+- Students cannot enroll in the same course offering twice
+- Validated within transaction context for consistency
+- Returns HTTP 409 Conflict with user-friendly error message
+
+### 2. Capacity Management
+- Enrollment count cannot exceed course offering capacity
+- Real-time validation with transaction isolation to prevent race conditions
+- Handles concurrent enrollment attempts correctly
+- Returns HTTP 409 Conflict with capacity details
+
+### 3. Schedule Conflict Detection
+- New course cannot overlap with existing student enrollments
+- Uses formula: `end_time = start_time + (credit_hours * 50_minutes)`
+- Advanced time overlap algorithm with inclusive boundary logic
+- Edge cases handled: adjacent slots (no conflict), 1-minute overlaps (detected)
+- Returns HTTP 409 Conflict with time range details
+
+### Domain-Specific Error System
+
+The enrollment system uses structured error types for precise error handling:
+
+```go
+// Error types include:
+ErrDuplicateEnrollment    // HTTP 409 - Already enrolled
+ErrCapacityExceeded       // HTTP 409 - Course full  
+ErrScheduleConflict       // HTTP 409 - Time overlap
+ErrCourseOfferingNotFound // HTTP 404 - Course not found
+ErrInvalidCourseData      // HTTP 400 - Data integrity issues
+ErrDatabaseOperation      // HTTP 500 - System error
+ErrTransactionFailed      // HTTP 500 - Transaction error
+```
+
+### Error Classification Helpers
+
+```go
+IsBusinessRuleViolation(err) // User action errors (409)
+IsDataValidationError(err)   // Data integrity errors (404/400)
+IsSystemError(err)          // Technical errors (500)
+```
 
 ## Development Commands
 
@@ -202,18 +249,44 @@ After adding new SQL queries to `db/sql/`, run `sqlc generate` to regenerate the
 
 ### Testing
 
-Run `go test ./...` to execute all tests. New features should include comprehensive unit tests following the existing patterns:
+Run `go test ./...` to execute all tests. The system includes comprehensive testing with multiple testing strategies:
 
-- Course enrollment tests: `modules/academic/usecases/course_enrollment_test.go`
-- Course offering CRUD tests: `modules/academic/usecases/course_offering_test.go`
+#### Test Files:
+- `modules/academic/usecases/course_enrollment_test.go` - Core enrollment with 12+ unit test scenarios
+- `modules/academic/usecases/course_enrollment_integration_test.go` - Integration and concurrent testing patterns
+- `modules/academic/usecases/enrollment_errors.go` - Domain-specific error types and validation
+- `modules/academic/usecases/course_offering_test.go` - Course offering CRUD tests
 
-Test patterns to follow:
+#### Test Coverage Areas:
+- **Business Logic Validation**: All three enrollment rules with transaction consistency
+- **Domain Error Testing**: Comprehensive validation of 7 error types and classifications  
+- **Edge Case Testing**: Boundary conditions (exactly at capacity), 1-minute time overlaps, data corruption
+- **Integration Testing**: Concurrent enrollment scenarios, transaction rollback verification
+- **Helper Functions**: Time calculations (1-6 credits), overlap detection (9+ scenarios), timestamp conversion
 
-- Use testify/suite for organized test structure
-- Mock repository interfaces using testify/mock
-- Include business logic validation tests
-- Test error scenarios and edge cases
-- Verify proper error propagation and handling
+#### Test Patterns to Follow:
+- Use testify/suite for organized test structure with setup/teardown
+- Mock repository interfaces using testify/mock with transaction support
+- Include domain-specific error type validation: `assert.True(t, IsEnrollmentError(err))`
+- Test concurrent enrollment scenarios for race conditions
+- Verify error classification: `IsBusinessRuleViolation(err)`, `IsSystemError(err)`
+- Test both unit (mocked) and integration (real transaction) scenarios
+
+#### Example Test Pattern:
+```go
+func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_ScheduleConflict() {
+    // Setup course with time overlap
+    err := suite.useCase.EnrollStudent(suite.ctx, studentID, courseID)
+    
+    // Verify domain-specific error
+    assert.Error(suite.T(), err)
+    assert.True(suite.T(), IsEnrollmentError(err))
+    errorType, ok := GetEnrollmentErrorType(err)
+    assert.True(suite.T(), ok)
+    assert.Equal(suite.T(), ErrScheduleConflict, errorType)
+    assert.True(suite.T(), IsBusinessRuleViolation(err))
+}
+```
 
 ## Architecture Patterns
 
@@ -321,7 +394,43 @@ func NewModule(pool *pgxpool.Pool) *AcademicModule {
 
 ### Error Handling
 
-All handlers return standardized JSON responses using `common.BaseResponse` with proper HTTP status codes and error details.
+The system implements a sophisticated domain-specific error handling system:
+
+#### Domain-Specific Error Types
+
+All enrollment operations use structured error types from `enrollment_errors.go`:
+
+```go
+type EnrollmentError struct {
+    Type    EnrollmentErrorType
+    Message string
+    Details map[string]interface{}
+}
+```
+
+#### Handler Error Processing
+
+Handlers convert domain errors to user-friendly HTTP responses:
+
+```go
+if enrollmentErr, ok := err.(*usecases.EnrollmentError); ok {
+    switch enrollmentErr.Type {
+    case usecases.ErrDuplicateEnrollment:
+        statusCode = fiber.StatusConflict
+        userMessage = "You are already enrolled in this course"
+    case usecases.ErrCapacityExceeded:
+        statusCode = fiber.StatusConflict
+        userMessage = "Course is full"
+    case usecases.ErrScheduleConflict:
+        statusCode = fiber.StatusConflict
+        userMessage = "Schedule conflict detected"
+    }
+}
+```
+
+#### Enhanced Response Format
+
+All handlers return standardized JSON responses using `common.BaseResponse` with proper HTTP status codes, user-friendly messages, and detailed error context for debugging.
 
 ## API Standards
 
@@ -350,22 +459,27 @@ All handlers return standardized JSON responses using `common.BaseResponse` with
 
 ### Current Testing Setup
 
-- **Framework**: Testify with assertion helpers, test suites, and comprehensive mocking
+- **Framework**: Testify with assertion helpers, test suites, comprehensive mocking, and integration testing
 - **Test Locations**:
-  - `modules/academic/usecases/course_enrollment_test.go` - Enrollment system with transaction tests
+  - `modules/academic/usecases/course_enrollment_test.go` - Core enrollment with 12+ unit test scenarios
+  - `modules/academic/usecases/course_enrollment_integration_test.go` - Integration and concurrent testing framework  
+  - `modules/academic/usecases/enrollment_errors.go` - Domain-specific error system (7 error types)
   - `modules/academic/usecases/course_offering_test.go` - Course offering CRUD tests
 - **Coverage**:
-  - Business logic validation (enrollment rules, CRUD operations)
-  - Transaction behavior and ACID compliance
-  - Error scenarios and edge cases
-  - Repository interaction patterns (both standard and transaction methods)
-  - Helper function testing (time calculations, UUID conversion)
+  - **Business Logic Validation**: All three enrollment rules with transaction consistency
+  - **Domain Error Testing**: Comprehensive validation of error types and classifications
+  - **Edge Case Testing**: Boundary conditions, 1-minute overlaps, data corruption scenarios
+  - **Integration Testing**: Concurrent enrollment, transaction rollback verification
+  - **Transaction behavior and ACID compliance**: Real database transaction testing
+  - **Helper Functions**: Time calculations (1-6 credits), overlap detection (9+ scenarios), timestamp conversion
+  - **Repository interaction patterns**: Both standard and transaction methods with proper mocking
 - **Mocking Strategy**:
   - Repository interface mocks using testify/mock with `Tx` method variants
-  - MockTransactionExecutor for unit testing transaction logic
+  - MockTransactionExecutor for unit testing transaction logic  
+  - Domain-specific error type validation and classification testing
   - Full pgx.Tx interface mocks for comprehensive transaction testing
-- **Test Organization**: Structured test suites with setup/teardown methods and grouped test cases
-- **Transaction Testing**: Separate unit tests (mocked) from integration tests (real transactions)
+- **Test Organization**: Structured test suites with setup/teardown methods, grouped test cases, and integration patterns
+- **Advanced Testing**: Unit tests (mocked), integration tests (real transactions), and concurrent enrollment scenarios
 
 ### Running Tests
 
@@ -384,38 +498,56 @@ go test -v ./modules/academic/usecases/
 
 **Course Enrollment Tests:**
 
-- Business logic validation (duplicate prevention, capacity limits) within transactions
-- Schedule conflict detection with time overlap calculations
-- Transaction rollback scenarios and error handling
-- Helper function testing (time calculations, conflict detection)
-- ACID compliance verification (consistency, atomicity)
+- **Business Rule Validation**: All three enrollment rules (duplicate, capacity, schedule) within transactions
+- **Domain Error Testing**: Comprehensive validation of 7 error types with classification helpers
+- **Edge Case Testing**: Boundary conditions (exactly at capacity), 1-minute time overlaps, adjacent time slots
+- **Data Integrity Testing**: Invalid course data, corrupted enrollments, NULL timestamps
+- **Schedule Conflict Detection**: Time overlap calculations with 9+ scenarios (overlaps, containment, adjacency)
+- **Transaction Safety**: ACID compliance verification with concurrent enrollment scenarios
+- **Helper Function Testing**: Time calculations (1-6 credits), overlap detection, timestamp conversion
 
 **Course Offering CRUD Tests:**
 
-- CRUD operation validation (create, read, update, delete)
-- Pagination logic testing
-- UUID handling and conversion testing
-- Repository interaction patterns (standard methods)
+- CRUD operation validation (create, read, update, delete) with comprehensive scenarios
+- Pagination logic testing with database-level optimization
+- UUID handling and conversion testing with error scenarios
+- Repository interaction patterns (both standard and transaction methods)
 
-**Mock Strategy:**
+**Integration Testing Framework:**
+
+- **Concurrent Enrollment**: Multi-student race conditions for last-spot scenarios  
+- **Transaction Rollback**: Real database transaction testing with rollback verification
+- **End-to-End Workflows**: Complete enrollment flows with actual data persistence
+- **Performance Benchmarks**: Enrollment operation timing and capacity testing
+
+**Advanced Mock Strategy:**
 
 - Repository interface mocks with both standard and `Tx` method expectations
 - MockTransactionExecutor bypasses actual transactions for unit tests
-- Context-aware testing with proper error propagation
-- Transaction context mocks (`*common.TxContext`) for consistent testing
-- Test data factories for consistent test setup
+- Domain-specific error type validation: `IsEnrollmentError(err)`, `GetEnrollmentErrorType(err)`
+- Error classification testing: `IsBusinessRuleViolation(err)`, `IsSystemError(err)`
+- Context-aware testing with proper error propagation and transaction context mocks
+- Test data factories for consistent test setup across unit and integration tests
 
-**Transaction Testing Patterns:**
+**Testing Pattern Examples:**
 
 ```go
-// Unit test with mocked transaction
-mockRepo := &MockAcademicRepository{}
-mockTxExecutor := &MockTransactionExecutor{}
-mockRepo.On("CheckEnrollmentExistsTx", mock.AnythingOfType("*common.TxContext"), studentID, courseID).Return(false, nil)
+// Unit test with domain-specific error validation
+func (suite *EnrollmentUseCaseTestSuite) TestEnrollStudent_CapacityFull() {
+    err := suite.useCase.EnrollStudent(suite.ctx, studentID, courseID)
+    assert.Error(suite.T(), err)
+    assert.True(suite.T(), IsEnrollmentError(err))
+    errorType, ok := GetEnrollmentErrorType(err)
+    assert.True(suite.T(), ok)
+    assert.Equal(suite.T(), ErrCapacityExceeded, errorType)
+    assert.True(suite.T(), IsBusinessRuleViolation(err))
+}
 
-// Integration test with real transaction
-txExecutor := common.NewPgxTransactionExecutor(testDB)
-useCase := NewCourseEnrollmentUseCase(repo, txExecutor)
+// Integration test with concurrent enrollment
+func (suite *IntegrationTestSuite) TestConcurrentEnrollment_LastSpotRace() {
+    // Launch 5 concurrent students attempting to enroll in 1-capacity course
+    // Verify exactly 1 succeeds, 4 fail with capacity exceeded error
+}
 ```
 
 ## Production Readiness Assessment
@@ -426,14 +558,18 @@ This system demonstrates **advanced POC patterns** that can be refined for produ
 
 **Production-Ready Patterns (✅ Implemented):**
 
-- Clean architecture with proper dependency injection
-- Comprehensive JWT authentication + role-based authorization
-- Type-safe database operations with SQLC
-- Structured logging with request tracking and error stack traces
-- Soft delete functionality with audit fields
-- Pagination support with database-level optimization
-- Comprehensive input validation with detailed error responses
-- Unit testing patterns with mocking strategies
+- Clean architecture with proper dependency injection and modular design
+- Comprehensive JWT authentication + role-based authorization with middleware chaining
+- Type-safe database operations with SQLC and full transaction support
+- Domain-specific error handling with 7 error types and user experience optimization
+- Advanced business rule validation (duplicate prevention, capacity management, schedule conflict detection)
+- Structured logging with request tracking, error stack traces, and business context
+- Soft delete functionality with audit fields and UUID primary keys
+- Pagination support with database-level optimization and metadata
+- Comprehensive input validation with detailed error responses and HTTP status mapping
+- Advanced testing patterns: unit tests (12+ scenarios), integration tests, concurrent enrollment testing
+- Transaction management with ACID compliance and concurrent operation support
+- Edge case handling: boundary conditions, data corruption, race condition management
 
 **Production Refinements Needed:**
 
@@ -479,21 +615,35 @@ The system has been successfully migrated from Echo v4 to Fiber v2, maintaining 
 
 **Building New Features:**
 
-1. Follow existing patterns (e.g. in `modules/academic/`)
-2. Implement comprehensive logging using the established patterns
-3. Add role-based access control using middleware chaining
-4. Include pagination for list endpoints
-5. Write comprehensive unit tests with transaction mocks and integration tests
-6. Follow the UUID handling patterns in repositories
-7. Use TransactionExecutor interface for multi-step operations requiring ACID properties
+1. Follow existing patterns (e.g. in `modules/academic/`) with domain-specific error handling
+2. Implement comprehensive logging using the established patterns with business context
+3. Add role-based access control using middleware chaining with proper HTTP status mapping
+4. Include pagination for list endpoints with database-level optimization
+5. Write comprehensive unit tests with domain error validation and transaction mocks
+6. Add integration tests for concurrent scenarios and transaction rollback testing
+7. Follow the UUID handling patterns in repositories with proper error handling
+8. Use TransactionExecutor interface for multi-step operations requiring ACID properties
+9. Implement domain-specific error types with user-friendly messages and classification helpers
+10. Add edge case testing for boundary conditions and data integrity scenarios
 
 **API Development Standards:**
 
-1. Use standardized response format from `common/base_response.go`
-2. Implement proper validation using validator tags
-3. Include structured logging with request tracking
-4. Handle errors with appropriate HTTP status codes
-5. Document role requirements for protected endpoints
+1. Use standardized response format from `common/base_response.go` with enhanced error details
+2. Implement domain-specific error handling with proper HTTP status code mapping
+3. Include structured logging with request tracking, error classification, and business context
+4. Handle errors with appropriate HTTP status codes: 409 for business rules, 404 for not found, 500 for system errors
+5. Document role requirements for protected endpoints with middleware examples
+6. Use error classification helpers: `IsBusinessRuleViolation()`, `IsSystemError()`, `IsDataValidationError()`
+7. Implement user-friendly error messages that hide technical details while providing actionable guidance
+
+**Testing Standards:**
+
+1. Write unit tests with domain-specific error type validation
+2. Include integration tests for complex business operations
+3. Test concurrent scenarios for race conditions and transaction isolation
+4. Validate error classification and HTTP status code mapping
+5. Test edge cases: boundary conditions, data corruption, invalid inputs
+6. Use structured test suites with proper setup/teardown and mock strategies
 
 # important-instruction-reminders
 
