@@ -1,0 +1,256 @@
+@startuml SIAKAD_v3_Conceptual_Data_Model
+
+!define ENTITY entity
+
+ENTITY gedung {
+    * id : uuid <<PK>>
+    --
+    kode : string
+    nama : string
+}
+
+ENTITY ruang {
+    * id : uuid <<PK>>
+    --
+    * id_gedung : uuid <<FK>>
+    kode : string
+    nama : string
+    kapasitas : int
+}
+
+ENTITY prodi {
+    * id : uuid <<PK>>
+    --
+    kode : string
+    nama : string
+    jenjang : string
+}
+
+ENTITY pengguna {
+    * id : uuid <<PK>>
+    --
+    nama : string
+    email : string
+    peran : string
+}
+
+ENTITY mahasiswa {
+    * id : uuid <<PK>>
+    --
+    * id_pengguna : uuid <<FK>>
+    * id_dosen_pa : uuid <<FK>>
+    nim : string
+}
+
+ENTITY dosen {
+    * id : uuid <<PK>>
+    --
+    * id_pengguna : uuid <<FK>>
+    * id_homebase_prodi : uuid <<FK>>
+    nidn : string
+    nuptk : string
+}
+
+ENTITY kalender_akademik {
+    * id : uuid <<PK>>
+    --
+    kode : string
+    nama : string
+}
+
+ENTITY mata_kuliah {
+    * id : uuid <<PK>>
+    --
+    kode : string
+    nama : string
+    sks : int
+}
+
+ENTITY prasyarat_mata_kuliah {
+    * id : uuid <<PK>>
+    --
+    * id_mata_kuliah : uuid <<FK>>
+    * id_mata_kuliah_prasyarat : uuid <<FK>>
+    ==
+    UNIQUE(id_mata_kuliah, id_mata_kuliah_prasyarat)
+}
+
+ENTITY semester {
+    * id : uuid <<PK>>
+    --
+    kode : string
+    nama : string
+    tipe_semester : enum
+}
+
+ENTITY kurikulum {
+    * id : uuid <<PK>>
+    --
+    * id_prodi : uuid <<FK>>
+    kode : string
+}
+
+ENTITY kalender_akademik_detail {
+    * id : uuid <<PK>>
+    --
+    * id_kalender_akademik : uuid <<FK>>
+    * id_semester : uuid <<FK>>
+    nama_kegiatan : string
+    tanggal_mulai : timestamptz
+    tanggal_berakhir : timestamptz
+}
+
+ENTITY kurikulum_mata_kuliah {
+    * id : uuid <<PK>>
+    --
+    * id_mata_kuliah : uuid <<FK>>
+    * id_kurikulum : uuid <<FK>>
+    ==
+    UNIQUE(id_mata_kuliah, id_kurikulum)
+}
+
+ENTITY penawaran_mata_kuliah {
+    * id : uuid <<PK>>
+    --
+    * id_kurikulum_mk : uuid <<FK>>
+    * id_semester : uuid <<FK>>
+    * id_ruang : uuid <<FK>>
+    kode_seksi : string
+    hari_pelaksanaan : int (1...7)
+    waktu_pelaksanaan : time
+    kapasitas : int
+    ==
+    UNIQUE(id_kurikulum_mk, id_semester, kode_seksi)
+}
+
+ENTITY pengampu_mata_kuliah {
+    * id : uuid <<PK>>
+    --
+    * id_dosen : uuid <<FK>>
+    * id_penawaran_mk : uuid <<FK>>
+    ==
+    UNIQUE(id_dosen, id_penawaran_mk)
+}
+
+ENTITY rencana_studi {
+    * id : uuid <<PK>>
+    --
+    * id_mahasiswa : uuid <<FK>>
+    * id_semester : uuid <<FK>>
+    ==
+    UNIQUE(id_mahasiswa, id_semester)
+}
+
+ENTITY rencana_studi_detail {
+    * id : uuid <<PK>>
+    --
+    * id_rencana_studi : uuid <<FK>>
+    * id_penawaran_mk : uuid <<FK>>
+    nilai_akhir : decimal
+    ==
+    UNIQUE(id_rencana_studi, id_penawaran_mk)
+}
+
+ENTITY ver_rencana_studi {
+    * id : uuid <<PK>>
+    --
+    * id_rencana_studi : uuid <<FK>>
+    * id_dosen_pa : uuid <<FK>>
+    status_sebelum : string
+    status_setelah : string
+    catatan : string
+}
+
+ENTITY ver_rencana_studi_detail {
+    * id : uuid <<PK>>
+    --
+    * id_rencana_studi_detail : uuid <<FK>>
+    * id_dosen_pa : uuid <<FK>>
+    status_sebelum : string
+    status_setelah : string
+    catatan : string
+}
+
+ENTITY komponen_nilai {
+    * id : uuid <<PK>>
+    --
+    * id_rencana_studi_detail : uuid <<FK>>
+    nama : string
+    nilai : decimal
+    prosentase : decimal
+}
+
+ENTITY pertemuan_kuliah {
+    * id : uuid <<PK>>
+    --
+    * id_penawaran_mk : uuid <<FK>>
+    nama : string
+    pertemuan_ke : int
+    jadwal_pertemuan : timestamptz
+}
+
+ENTITY presensi_pertemuan_kuliah {
+    * id : uuid <<PK>>
+    --
+    * id_pertemuan_kuliah : uuid <<FK>>
+    * id_mahasiswa : uuid <<FK>>
+    status_kehadiran : enum "HADIR | SAKIT | IZIN | ALPA"
+    ==
+    UNIQUE(id_pertemuan_kuliah, id_mahasiswa)
+}
+
+ENTITY ajuan_bimbingan_akademik {
+    * id : uuid <<PK>>
+    --
+    * id_mahasiswa : uuid <<FK>>
+    tujuan_bimbingan : string
+    jadwal_bimbingan : timestamptz
+    id_ruang : uuid <<FK>>
+}
+
+ENTITY ver_ajuan_bimbingan_akademik {
+    * id : uuid <<PK>>
+    --
+    * id_ajuan_bimbingan_akademik : uuid <<FK>>
+    id_dosen_pa : uuid <<FK>>
+    status_sebelum : string
+    status_setelah : string
+    catatan : string
+}
+
+' Relationships
+gedung ||--|{ ruang : "memiliki"
+pengguna ||--|| mahasiswa : "menjadi"
+pengguna ||--|| dosen : "menjadi"
+prodi ||--|{ kurikulum : "memiliki"
+prodi ||--|{ dosen : "memiliki"
+dosen ||--|{ mahasiswa : "membimbing"
+kurikulum ||--|{ kurikulum_mata_kuliah : "berisi"
+mata_kuliah ||--|{ kurikulum_mata_kuliah : "bagian_dari"
+kurikulum_mata_kuliah ||--|{ penawaran_mata_kuliah : "ditawarkan_sebagai"
+ruang ||--|{ penawaran_mata_kuliah : "digunakan_untuk"
+semester ||--|{ penawaran_mata_kuliah : "menawarkan"
+mahasiswa ||--o{ rencana_studi : "memiliki"
+dosen ||--o{ pengampu_mata_kuliah : "ditugaskan_sebagai"
+penawaran_mata_kuliah ||--|{ pengampu_mata_kuliah : "diampu_oleh"
+kalender_akademik ||--|{ kalender_akademik_detail : "memiliki"
+semester ||--|{ kalender_akademik_detail : "terdapat_pada"
+semester ||--|{ rencana_studi : "terdapat_pada"
+rencana_studi ||--|{ rencana_studi_detail : "memiliki"
+penawaran_mata_kuliah ||--|{ rencana_studi_detail : "diambil_dalam"
+rencana_studi_detail ||--|{ ver_rencana_studi_detail : "diverifikasi_pada"
+rencana_studi ||--|{ ver_rencana_studi : "diverifikasi_pada"
+dosen ||--|{ ver_rencana_studi : "memverifikasi"
+dosen ||--|{ ver_rencana_studi_detail : "memverifikasi"
+rencana_studi_detail ||--o{ komponen_nilai : "memiliki"
+mata_kuliah ||--|{ prasyarat_mata_kuliah : "memiliki_prasyarat"
+mata_kuliah ||--|{ prasyarat_mata_kuliah : "menjadi"
+penawaran_mata_kuliah ||--|{ pertemuan_kuliah : "diajarkan_tiap"
+pertemuan_kuliah ||--o{ presensi_pertemuan_kuliah : "memiliki"
+mahasiswa ||--o{ presensi_pertemuan_kuliah : "melakukan"
+mahasiswa ||--o{ ajuan_bimbingan_akademik : "mengajukan"
+ajuan_bimbingan_akademik ||--|{ ver_ajuan_bimbingan_akademik : "diverifikasi_pada"
+ruang ||--|{ ajuan_bimbingan_akademik : "digunakan_untuk"
+dosen ||--|{ ver_ajuan_bimbingan_akademik : "memverifikasi"
+
+@enduml
