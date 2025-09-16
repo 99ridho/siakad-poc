@@ -39,6 +39,7 @@ ENTITY mahasiswa {
     --
     * id_pengguna : uuid <<FK>>
     * id_dosen_pa : uuid <<FK>>
+    * id_prodi : uuid <<FK>>
     nim : string
 }
 
@@ -224,6 +225,7 @@ pengguna ||--|| mahasiswa : "menjadi"
 pengguna ||--|| dosen : "menjadi"
 prodi ||--|{ kurikulum : "memiliki"
 prodi ||--|{ dosen : "memiliki"
+prodi ||--|{ mahasiswa : "memiliki"
 dosen ||--|{ mahasiswa : "membimbing"
 kurikulum ||--|{ kurikulum_mata_kuliah : "berisi"
 mata_kuliah ||--|{ kurikulum_mata_kuliah : "bagian_dari"
